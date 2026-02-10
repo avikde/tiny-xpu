@@ -1,4 +1,5 @@
-import os
+import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import cocotb
@@ -49,6 +50,8 @@ async def test_weight_load(dut):
     dut.data_in.value = 3
     dut.acc_in.value = 0
     dut.en.value = 1
+
+    # NOTE: this edge does the computation, but cocotb timing nuance requires another cycle for the output to be available.
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)  # output registered
 
@@ -153,6 +156,14 @@ def run_tests():
         test_module="test_pe",
         waves=True,
     )
+
+    # cocotb exits 0 even when tests fail; check results XML explicitly
+    results_file = Path("sim_build/results.xml")
+    if results_file.exists():
+        tree = ET.parse(results_file)
+        failures = tree.findall(".//failure") + tree.findall(".//error")
+        if failures:
+            sys.exit(1)
 
 
 if __name__ == "__main__":
