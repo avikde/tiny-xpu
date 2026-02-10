@@ -8,6 +8,15 @@ While there are other projects building up small (~2x2) TPU-inspired designs (se
 - Easy software interface via ONNX EP and maybe others
 - Support for FPGA deployment
 
+## Setup
+
+Set up in WSL or other Linux: 
+
+- `sudo apt install iverilog` -- Icarus Verilog for simulation
+- Install the [Surfer waveform viewer](https://marketplace.visualstudio.com/items?itemName=surfer-project.surfer) VSCode extension for viewing `.vcd` waveform files
+- `sudo apt install yosys` -- Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
+- `pip install cocotb` -- Python tool for more powerful testing capabilities
+
 ## Building
 
 ```shell
@@ -15,6 +24,14 @@ mkdir -p build && cd build
 cmake ..
 make -j
 ```
+
+## Testing
+
+```shell
+cd build && ctest --verbose
+```
+
+Tests produce waveform files (`*.fst`) in `test/sim_build/`. Open them in VSCode with the Surfer extension to inspect signals.
 
 ## Related projects
 
