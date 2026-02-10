@@ -35,11 +35,11 @@ Tests produce waveform files (`*.fst`) in `test/sim_build/`. Open them in VSCode
 
 ## Supported operations
 
-Most previous projects have focused on a matrix multiply followed by activation, mimicking Google's TPU, and aiming to solve something like the XOR classification problem.
+For this project, our goal was to develop something broadly applicable. 
 
-For this project, our goal was to develop something broadly applicable. We initially focused on General Matrix Multiply (GEMM); because it parameterizes the scaling constants `α` and `β` (`C = αAB + βC`), it subsumes pure matrix multiplication as a special case and enables fused multiply-accumulate patterns that avoid redundant memory writes. Many types of computations common in deep learning, including matrix multiplication, are [specializations of a GEMM operation](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html). GEMMs show up in [dense fully connected networks](https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html) that are a core component of transformers and RNNs.
+We initially focused on General Matrix Multiply (GEMM); because it parameterizes the scaling constants `α` and `β` (`C = αAB + βC`), it subsumes pure matrix multiplication as a special case and enables fused multiply-accumulate patterns that avoid redundant memory writes. Many types of computations common in deep learning, including matrix multiplication, are [specializations of a GEMM operation](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html). GEMMs show up in [dense fully connected networks](https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html) that are a core component of transformers and RNNs. Lastly, it is one of the [Basic Linear Algebra Subproblems (BLAS)](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) that have been the bedrock of scientific computing.
 
-Lastly, it is one of the [Basic Linear Algebra Subproblems (BLAS)](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) that have been the bedrock of scientific computing.
+As a step toward GEMM, we add a MatMul.
 
 ## Systolic array implementation
 
