@@ -1,8 +1,7 @@
 `timescale 1ns / 1ps
 
-// Processing Element (PE) for systolic array
-// Performs multiply-accumulate: acc += weight * data_in
-// Passes data through to neighboring PEs
+// Processing Element (PE) for systolic array, named as in Kung (1982)
+// See documentation in README
 
 module pe #(
     parameter DATA_WIDTH = 8,
@@ -18,6 +17,8 @@ module pe #(
 
     // Weight (stationary)
     input  logic signed [DATA_WIDTH-1:0] weight_in,
+    // control signal "weight load"
+    // When high, the PE latches weight_in into its internal weight_r register.
     input  logic                         weight_ld,
 
     // Partial sum cascade
@@ -25,9 +26,11 @@ module pe #(
     output logic signed [ACC_WIDTH-1:0]  acc_out
 );
 
+    // weight_r is signed [7:0], an 8-bit signed value (range -128 to +127, i.e. int8)
     logic signed [DATA_WIDTH-1:0] weight_r;
+    // data_in is signed [7:0] 
     logic signed [ACC_WIDTH-1:0]  mult_result;
-
+    // The result is assigned to mult_result which is signed [31:0]
     assign mult_result = weight_r * data_in;
 
     always_ff @(posedge clk or negedge rst_n) begin
