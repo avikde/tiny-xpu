@@ -33,13 +33,23 @@ cd build && ctest --verbose
 
 Tests produce waveform files (`*.fst`) in `test/sim_build/`. Open them in VSCode with the Surfer extension to inspect signals.
 
-## Supported operations
+## Typical MatMul -> Add -> ReLU chain handling
 
-For this project, our goal was to develop something broadly applicable. 
+For CUDA,
+
+- `MatMul -> Add` will be fused into a single `Gemm(X, W, B, alpha=1, beta=1)` node. CUDA EP then maps Gemm -> `cublasGemmEx`.
+- The Relu remains separate unless you also use a custom CUDA fusion kernel.
+
+NPU EPs generally go further
+
+- Fuse the entire block into a single "FullyConnected with activation" op
+- This is the canonical pattern for FC layers and nearly every NPU compiler (Qualcomm HTP `QNN_OP_FULLY_CONNECTED + QNN_OP_RELU`, [Apple CoreML](https://machinethink.net/blog/peek-inside-coreml/)) fuses these
+
+## TinyXPU supported operations
+
+For this project, our goal was to develop something broadly applicable, but useful along the lines above.
 
 We initially focused on General Matrix Multiply (GEMM); because it parameterizes the scaling constants `α` and `β` (`C = αAB + βC`), it subsumes pure matrix multiplication as a special case and enables fused multiply-accumulate patterns that avoid redundant memory writes. Many types of computations common in deep learning, including matrix multiplication, are [specializations of a GEMM operation](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html). GEMMs show up in [dense fully connected networks](https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html) that are a core component of transformers and RNNs. Lastly, it is one of the [Basic Linear Algebra Subproblems (BLAS)](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) that have been the bedrock of scientific computing.
-
-As a step toward GEMM, we add a MatMul.
 
 ## Systolic array implementation
 
