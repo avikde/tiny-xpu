@@ -76,7 +76,23 @@ So the typical sequence is:
 - Stream many inputs through with weights held fixed (`en=1, weight_ld=0`)
 - When you need new weights (next layer, next tile), load again
 
-This is why it's called "weight-stationary" — weights move once, data flows repeatedly
+Data flows east (→), partial sums flow south (↓) — this is the standard output-stationary / weight-stationary systolic layout from Kung (1982).
+
+```
+        weight_ld
+            │
+            │  en
+            ▼  ▼
+         ┌──────────┐   
+         │    PE    ├──► data_out
+         │          │
+         │  weight  │
+         │  (reg)   │
+data_in─►│          │
+         │  ×  +    │
+acc_in ──►          ├──► acc_out
+         └──────────┘
+```
 
 ## Related projects
 
