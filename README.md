@@ -16,14 +16,18 @@ Set up in WSL or other Linux:
 - Install the [Surfer waveform viewer](https://marketplace.visualstudio.com/items?itemName=surfer-project.surfer) VSCode extension for viewing `.vcd` waveform files
 - `sudo apt install yosys` -- Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
 - `pip install cocotb` -- Python tool for more powerful testing capabilities
+- `sudo apt install verilator` -- Compile SV -> C++ for EP linkage
 
 Build:
 
 ```shell
 mkdir -p build && cd build
-cmake ..
+cmake .. -DSIM=ON
 make -j
 ```
+
+Important flags:
+- `-DSIM=ON` - link Verilator into the ONNX EP so that it executes verilator simulation. When off, it will attempt to use hardware when implemented.
 
 Test:
 

@@ -61,6 +61,26 @@ else()
 endif()
 
 # ============================================================================
+# Optional: Verilator simulation backend (-DSIM=ON)
+# ============================================================================
+
+if(SIM)
+    find_package(verilator HINTS $ENV{VERILATOR_ROOT} /usr/share/verilator)
+    if(NOT verilator_FOUND)
+        message(FATAL_ERROR "SIM=ON but Verilator not found. Install with: sudo apt install verilator")
+    endif()
+
+    verilate(tinyxpu_ep
+        SOURCES     ${CMAKE_SOURCE_DIR}/src/pe.sv
+        TOP_MODULE  pe
+        PREFIX      Vpe
+    )
+
+    target_compile_definitions(tinyxpu_ep PRIVATE TINYXPU_USE_VERILATOR)
+    message(STATUS "SIM=ON: Verilator ${verilator_VERSION} — pe.sv will be linked into tinyxpu_ep")
+endif()
+
+# ============================================================================
 # Build a Test Application (optional)
 # ============================================================================
 

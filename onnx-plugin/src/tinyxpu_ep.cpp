@@ -7,6 +7,11 @@
 #include <cstddef>
 #include <cstdio>
 
+#ifdef TINYXPU_USE_VERILATOR
+#include "Vpe.h"
+#include "verilated.h"
+#endif
+
 // Platform-specific export macro
 #if defined(_WIN32)
 #define EXPORT_SYMBOL __declspec(dllexport)
@@ -567,11 +572,37 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     status = info->ort_api->GetTensorMutableData(output, (void**)&data_out);
     if (status != nullptr) return status;
 
-    // Perform element-wise addition (even for Mul, just for demonstration)
-    // In a real EP, this would dispatch to hardware
+#ifdef TINYXPU_USE_VERILATOR
+    // TODO: implement systolic MAC via Verilator-compiled pe.sv.
+    //
+    // Sketch for a single-PE dot product (weight-stationary):
+    //
+    //   VerilatedContext ctx;
+    //   Vpe pe{&ctx};
+    //
+    //   // Reset
+    //   pe.rst_n = 0; pe.clk = 0; pe.eval();
+    //   pe.clk = 1;   pe.eval();
+    //   pe.rst_n = 1;
+    //
+    //   // Load weight for this output element
+    //   pe.weight_ld = 1; pe.weight_in = <w>; tick(pe); pe.weight_ld = 0;
+    //
+    //   // Stream inputs, accumulate
+    //   pe.en = 1; pe.acc_in = 0;
+    //   for each input:
+    //       pe.data_in = <x>; tick(pe);
+    //   data_out[i] = static_cast<float>(pe.acc_out);
+    //
+    //   pe.final();
+    (void)data_0; (void)data_1; (void)data_out; (void)total_elements;
+    return info->ort_api->CreateStatus(ORT_NOT_IMPLEMENTED, "SIM stub: Verilator compute not yet implemented");
+#else
+    // CPU fallback: element-wise addition
     for (size_t i = 0; i < total_elements; ++i) {
         data_out[i] = data_0[i] + data_1[i];
     }
+#endif
 
     return nullptr;  // Success
 }
