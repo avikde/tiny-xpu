@@ -94,6 +94,10 @@ acc_in ──►          ├──► acc_out
          └──────────┘
 ```
 
+### Networked PE's -> Systolic array
+
+- Multiple PE's connected together form a systolic array
+
 ## Related projects
 
 There are a number of "tiny TPU"-type projects, due to the current popularity of TPUs and LLMs.
