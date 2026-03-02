@@ -8,7 +8,7 @@
 #include <cstdio>
 
 #ifdef TINYXPU_USE_VERILATOR
-#include "Vpe.h"
+#include "Varray.h"
 #include "verilated.h"
 #endif
 
@@ -573,28 +573,36 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     if (status != nullptr) return status;
 
 #ifdef TINYXPU_USE_VERILATOR
-    // TODO: implement systolic MAC via Verilator-compiled pe.sv.
+    // TODO: implement tiled matmul via Verilator-compiled array.sv.
     //
-    // Sketch for a single-PE dot product (weight-stationary):
+    // The array is TINYXPU_ARRAY_ROWS x TINYXPU_ARRAY_COLS PEs.
+    // Sketch for one output tile (weight-stationary):
     //
     //   VerilatedContext ctx;
-    //   Vpe pe{&ctx};
+    //   Varray arr{&ctx};
     //
     //   // Reset
-    //   pe.rst_n = 0; pe.clk = 0; pe.eval();
-    //   pe.clk = 1;   pe.eval();
-    //   pe.rst_n = 1;
+    //   arr.rst_n = 0; arr.clk = 0; arr.eval();
+    //   arr.clk = 1;   arr.eval();
+    //   arr.rst_n = 1;
     //
-    //   // Load weight for this output element
-    //   pe.weight_ld = 1; pe.weight_in = <w>; tick(pe); pe.weight_ld = 0;
+    //   // Load weights (one element per PE, held stationary during compute)
+    //   arr.weight_ld = 1;
+    //   for (int r = 0; r < TINYXPU_ARRAY_ROWS; r++)
+    //       for (int c = 0; c < TINYXPU_ARRAY_COLS; c++)
+    //           arr.weight_in[r][c] = B[r][c];  // int8
+    //   tick(arr); arr.weight_ld = 0;
     //
-    //   // Stream inputs, accumulate
-    //   pe.en = 1; pe.acc_in = 0;
-    //   for each input:
-    //       pe.data_in = <x>; tick(pe);
-    //   data_out[i] = static_cast<float>(pe.acc_out);
+    //   // Stream K activation columns east, accumulate partial sums south
+    //   arr.en = 1;
+    //   for (int k = 0; k < K; k++) {
+    //       for (int r = 0; r < TINYXPU_ARRAY_ROWS; r++)
+    //           arr.data_in[r] = A[r][k];  // int8
+    //       tick(arr);
+    //   }
+    //   // arr.acc_out[c] now holds the dot product for output column c
     //
-    //   pe.final();
+    //   arr.final();
     (void)data_0; (void)data_1; (void)data_out; (void)total_elements;
     return info->ort_api->CreateStatus(ORT_NOT_IMPLEMENTED, "SIM stub: Verilator compute not yet implemented");
 #else
