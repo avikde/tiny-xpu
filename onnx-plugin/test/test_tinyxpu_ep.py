@@ -6,7 +6,7 @@ Author: Avik De
 Licensed under the MIT License.
 
 Usage:
-    python test_sample_ep.py [path_to_libsample_ep.so]
+    python test_tinyxpu_ep.py [path_to_tinyxpu_ep.so]
 """
 import sys
 import os
@@ -48,7 +48,7 @@ def main():
 
     # Determine plugin library path
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    default_path = os.path.join(script_dir, "..", "build", "libsample_ep.so")
+    default_path = os.path.join(script_dir, "..", "build", "libtinyxpu_ep.so")
     plugin_path = sys.argv[1] if len(sys.argv) > 1 else default_path
     plugin_path = os.path.abspath(plugin_path)
 

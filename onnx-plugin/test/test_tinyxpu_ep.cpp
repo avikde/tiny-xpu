@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
     std::cout << "ONNX Runtime loaded successfully\n" << std::endl;
 
     // Determine the plugin library path
-    const char* plugin_path = "./libsample_ep.so";
+    const char* plugin_path = "./libtinyxpu_ep.so";
     if (argc > 1) {
         plugin_path = argv[1];
     }

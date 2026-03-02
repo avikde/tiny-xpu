@@ -70,8 +70,8 @@ cmake --build . --parallel
 
 After building, you'll have:
 
-- `libsample_ep.so` - The plugin EP shared library
-- `test_sample_ep` - A test application (if `BUILD_TEST_APP=ON`)
+- `libtinyxpu_ep.so` - The plugin EP shared library
+- `test_tinyxpu_ep` - A test application (if `BUILD_TEST_APP=ON`)
 
 ## Project Structure
 
@@ -80,11 +80,11 @@ onnx-plugin/
 ├── CMakeLists.txt           # Build configuration
 ├── README.md                # This file
 ├── include/
-│   └── sample_ep.h          # EP header with class definitions
+│   └── tinyxpu_ep.h          # EP header with class definitions
 ├── src/
-│   └── sample_ep.cpp        # EP implementation
+│   └── tinyxpu_ep.cpp        # EP implementation
 └── test/
-    └── test_sample_ep.cpp   # Test application
+    └── test_tinyxpu_ep.cpp   # Test application
 ```
 
 ## Plugin Architecture
