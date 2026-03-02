@@ -22,7 +22,7 @@ Build:
 
 ```shell
 mkdir -p build && cd build
-cmake .. -DSIM=ON
+cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DSIM=ON
 make -j
 ```
 

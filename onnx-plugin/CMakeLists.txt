@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.18)
 project(sample_onnx_ep VERSION 1.0.0 LANGUAGES CXX)
 
+option(SIM "Link Verilator-compiled SV into the ONNX EP (enables TINYXPU_USE_VERILATOR)" OFF)
+option(BUILD_TEST_APP "Build the test application" ON)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -77,14 +80,12 @@ if(SIM)
     )
 
     target_compile_definitions(tinyxpu_ep PRIVATE TINYXPU_USE_VERILATOR)
-    message(STATUS "SIM=ON: Verilator ${verilator_VERSION} — pe.sv will be linked into tinyxpu_ep")
+    message(STATUS "SIM=ON: Verilator ${verilator_VERSION}")
 endif()
 
 # ============================================================================
 # Build a Test Application (optional)
 # ============================================================================
-
-option(BUILD_TEST_APP "Build the test application" ON)
 
 if(BUILD_TEST_APP AND ONNXRUNTIME_LIB_DIR)
     add_executable(test_tinyxpu_ep

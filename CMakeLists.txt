@@ -42,8 +42,6 @@ if(YOSYS)
     add_custom_target(synth DEPENDS ${SYNTH_JSON})
 endif()
 
-option(SIM "Link Verilator-compiled SV into the ONNX EP (enables TINYXPU_USE_VERILATOR)" OFF)
-
 add_subdirectory(onnx-plugin)
 
 # ---------- cocotb tests (run via: ctest from build/) ----------
