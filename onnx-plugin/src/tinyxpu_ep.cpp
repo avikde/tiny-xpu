@@ -6,6 +6,7 @@
 #include <cstring>
 #include <cstddef>
 #include <cstdio>
+#include <cstdint>
 
 #ifdef TINYXPU_USE_VERILATOR
 #include "Varray.h"
@@ -336,8 +337,43 @@ OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(
             return status;
         }
 
-        if (op_type && std::strcmp(op_type, "MatMul") == 0) {
-            printf("  [TinyXPU EP] Claiming op: MatMul\n");
+#ifdef TINYXPU_USE_VERILATOR
+        const bool is_our_op = op_type && std::strcmp(op_type, "MatMulInteger") == 0;
+#else
+        const bool is_our_op = op_type && std::strcmp(op_type, "MatMul") == 0;
+#endif
+        if (is_our_op) {
+#ifdef TINYXPU_USE_VERILATOR
+            // Only claim MatMulInteger nodes whose first two inputs are int8.
+            // Skip (don't claim) if we can't confirm this.
+            bool inputs_ok = false;
+            {
+                size_t ni = 0;
+                if (!apis.ort_api->Node_GetNumInputs(node, &ni) && ni >= 2) {
+                    std::vector<const OrtValueInfo*> vi(ni, nullptr);
+                    if (!apis.ort_api->Node_GetInputs(node, vi.data(), ni)) {
+                        inputs_ok = true;
+                        for (int idx = 0; idx < 2 && inputs_ok; ++idx) {
+                            if (!vi[idx]) { inputs_ok = false; break; }
+                            const OrtTypeInfo* ti = nullptr;
+                            if (apis.ort_api->GetValueInfoTypeInfo(vi[idx], &ti) || !ti)
+                                { inputs_ok = false; break; }
+                            const OrtTensorTypeAndShapeInfo* tsi = nullptr;
+                            if (apis.ort_api->CastTypeInfoToTensorInfo(ti, &tsi) || !tsi)
+                                { inputs_ok = false; break; }
+                            ONNXTensorElementDataType et = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+                            if (apis.ort_api->GetTensorElementType(tsi, &et) ||
+                                et != ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8)
+                                { inputs_ok = false; break; }
+                        }
+                    }
+                }
+            }
+            if (!inputs_ok) continue;
+            printf("  [TinyXPU EP] Claiming op: MatMulInteger (int8, 4x4 systolic array)\n");
+#else
+            printf("  [TinyXPU EP] Claiming op: MatMul (CPU float32 fallback)\n");
+#endif
             fflush(stdout);
 
             // Add each supported node as its own fused group
@@ -558,44 +594,84 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     if (!output)
         return info->ort_api->CreateStatus(ORT_FAIL, "MatMul: failed to allocate output");
 
-    // ---- data pointers (float32) --------------------------------------------
-    const float* A = nullptr;
-    const float* B = nullptr;
-    float* C = nullptr;
-    status = info->ort_api->GetTensorData(input_A, (const void**)&A);
+    // ---- raw data pointers --------------------------------------------------
+    const void* A_raw = nullptr;
+    const void* B_raw = nullptr;
+    void* C_raw = nullptr;
+    status = info->ort_api->GetTensorData(input_A, &A_raw);
     if (status) return status;
-    status = info->ort_api->GetTensorData(input_B, (const void**)&B);
+    status = info->ort_api->GetTensorData(input_B, &B_raw);
     if (status) return status;
-    status = info->ort_api->GetTensorMutableData(output, (void**)&C);
+    status = info->ort_api->GetTensorMutableData(output, &C_raw);
     if (status) return status;
 
 #ifdef TINYXPU_USE_VERILATOR
-    // TODO: tiled MatMul via Verilator-compiled array.sv.
-    //
-    // No ISA, instruction decoder, unified buffer, or dedicated accumulator
-    // are needed: driving Verilator from C++ replaces all of those.
-    //
-    // What IS needed (all in software):
-    //   1. Tiling loop — split M×K×N into ROWS×ROWS×COLS tiles
-    //   2. Quantization — cast float32 inputs to int8 per tile
-    //   3. Clock loop — ROWS+COLS ticks per output row per tile
-    //   4. Accumulation — sum int32 tile results into float32 C
-    //
-    // Sketch for one tile (B_tile is ROWS×COLS, A_row is 1×ROWS):
-    //
-    //   VerilatedContext ctx;
-    //   Varray arr{&ctx};
-    //   // reset, load B_tile weights, then for each output row i:
-    //   //   arr.en = 1;
-    //   //   for (int k = 0; k < ROWS; k++) arr.data_in[k] = A_int8[i][k];
-    //   //   tick ROWS+COLS times;
-    //   //   for (int j = 0; j < COLS; j++) C[i][j] += (float)arr.acc_out[j];
-    //   arr.final();
-    (void)A; (void)B; (void)C; (void)M; (void)K; (void)N;
-    return info->ort_api->CreateStatus(ORT_NOT_IMPLEMENTED,
-        "TinyXPU SIM: MatMul via Verilator not yet implemented");
+    // MatMulInteger: int8 inputs → int32 output via 4×4 systolic array.
+    // No tiling or quantization: we only accept K=ROWS=4, N=COLS=4.
+    // M is unrestricted — we stream each output row independently.
+    constexpr int HW_ROWS = TINYXPU_ARRAY_ROWS;
+    constexpr int HW_COLS = TINYXPU_ARRAY_COLS;
+
+    if (K != HW_ROWS || N != HW_COLS)
+        return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
+            "TinyXPU: MatMulInteger requires K==ROWS==4 and N==COLS==4");
+
+    const int8_t* A_i8 = static_cast<const int8_t*>(A_raw);
+    const int8_t* B_i8 = static_cast<const int8_t*>(B_raw);
+    int32_t*      C_i32 = static_cast<int32_t*>(C_raw);
+
+    {
+        VerilatedContext ctx;
+        Varray arr{&ctx};
+
+        // RAII: ensure arr.final() is called on every exit path.
+        struct Guard { Varray& a; ~Guard() { a.final(); } } guard{arr};
+
+        // One full clock cycle: rising edge then falling edge.
+        // Registered outputs update on the rising edge.
+        auto tick = [&]() {
+            arr.clk = 1; arr.eval();
+            arr.clk = 0; arr.eval();
+        };
+
+        // Reset sequence: mirrors reset_dut() in test_array.py
+        arr.clk = 0;
+        arr.rst_n = 0;
+        arr.en = 0;
+        arr.weight_ld = 0;
+        for (int k = 0; k < HW_ROWS; ++k) arr.data_in[k] = 0;
+        for (int r = 0; r < HW_ROWS; ++r)
+            for (int c = 0; c < HW_COLS; ++c)
+                arr.weight_in[r * HW_COLS + c] = 0;
+        arr.eval();
+        for (int i = 0; i < 3; ++i) tick();   // 3 cycles with reset asserted
+        arr.rst_n = 1;
+        tick();                                // 1 more cycle — mirrors reset_dut()
+
+        // Load weight matrix B (K×N = ROWS×COLS): mirrors load_weights()
+        arr.weight_ld = 1;
+        for (int r = 0; r < HW_ROWS; ++r)
+            for (int c = 0; c < HW_COLS; ++c)
+                arr.weight_in[r * HW_COLS + c] = static_cast<uint8_t>(B_i8[r * N + c]);
+        tick();              // rising edge latches weights
+        arr.weight_ld = 0;
+        tick();              // let weights settle
+
+        // Stream each output row of A through the array: mirrors stream_row()
+        arr.en = 1;
+        for (int64_t i = 0; i < M; ++i) {
+            for (int k = 0; k < HW_ROWS; ++k)
+                arr.data_in[k] = static_cast<uint8_t>(A_i8[i * K + k]);
+            for (int t = 0; t < HW_ROWS + HW_COLS; ++t) tick();
+            for (int j = 0; j < HW_COLS; ++j)
+                C_i32[i * N + j] = static_cast<int32_t>(arr.acc_out[j]);
+        }
+    } // guard calls arr.final() here
 #else
-    // CPU fallback: naive float32 matmul
+    // CPU fallback: naive float32 MatMul (non-Verilator build only)
+    const float* A = static_cast<const float*>(A_raw);
+    const float* B = static_cast<const float*>(B_raw);
+    float*       C = static_cast<float*>(C_raw);
     for (int64_t i = 0; i < M; ++i) {
         for (int64_t j = 0; j < N; ++j) {
             float acc = 0.0f;
