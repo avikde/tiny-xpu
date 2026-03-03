@@ -590,7 +590,7 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     //   arr.weight_ld = 1;
     //   for (int r = 0; r < TINYXPU_ARRAY_ROWS; r++)
     //       for (int c = 0; c < TINYXPU_ARRAY_COLS; c++)
-    //           arr.weight_in[r][c] = B[r][c];  // int8
+    //           arr.weight_in[r * TINYXPU_ARRAY_COLS + c] = B[r][c];  // row-major flat index
     //   tick(arr); arr.weight_ld = 0;
     //
     //   // Stream K activation columns east, accumulate partial sums south
