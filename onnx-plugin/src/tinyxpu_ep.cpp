@@ -12,6 +12,7 @@
 #include "Varray.h"
 #include "verilated.h"
 #endif
+#include "tinyxpu_perf.h"
 
 // Platform-specific export macro
 #if defined(_WIN32)
@@ -620,6 +621,12 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     const int8_t* B_i8 = static_cast<const int8_t*>(B_raw);
     int32_t*      C_i32 = static_cast<int32_t*>(C_raw);
 
+    // Observation counters — populated by every signal write and clock tick
+    // below.  No prior knowledge of systolic-array behaviour assumed.
+    SimObservations obs{};
+    obs.M = M; obs.K = K; obs.N = N;
+    obs.hw_rows = HW_ROWS; obs.hw_cols = HW_COLS;
+
     {
         VerilatedContext ctx;
         Varray arr{&ctx};
@@ -628,8 +635,9 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         struct Guard { Varray& a; ~Guard() { a.final(); } } guard{arr};
 
         // One full clock cycle: rising edge then falling edge.
-        // Registered outputs update on the rising edge.
+        // Increments ticks_total unconditionally; caller tags the phase counter.
         auto tick = [&]() {
+            obs.ticks_total++;
             arr.clk = 1; arr.eval();
             arr.clk = 0; arr.eval();
         };
@@ -644,29 +652,39 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
             for (int c = 0; c < HW_COLS; ++c)
                 arr.weight_in[r * HW_COLS + c] = 0;
         arr.eval();
-        for (int i = 0; i < 3; ++i) tick();   // 3 cycles with reset asserted
+        for (int i = 0; i < 3; ++i) { tick(); obs.ticks_reset++; }
         arr.rst_n = 1;
-        tick();                                // 1 more cycle — mirrors reset_dut()
+        tick();  // post-reset settle (not tagged as reset or streaming)
 
         // Load weight matrix B (K×N = ROWS×COLS): mirrors load_weights()
         arr.weight_ld = 1;
         for (int r = 0; r < HW_ROWS; ++r)
-            for (int c = 0; c < HW_COLS; ++c)
+            for (int c = 0; c < HW_COLS; ++c) {
                 arr.weight_in[r * HW_COLS + c] = static_cast<uint8_t>(B_i8[r * N + c]);
-        tick();              // rising edge latches weights
+                obs.weight_writes++;        // one int8 element written to a PE register
+            }
+        tick(); obs.ticks_weight_load++;    // rising edge latches weights
         arr.weight_ld = 0;
-        tick();              // let weights settle
+        tick(); obs.ticks_weight_load++;    // settle
 
         // Stream each output row of A through the array: mirrors stream_row()
         arr.en = 1;
         for (int64_t i = 0; i < M; ++i) {
-            for (int k = 0; k < HW_ROWS; ++k)
+            for (int k = 0; k < HW_ROWS; ++k) {
                 arr.data_in[k] = static_cast<uint8_t>(A_i8[i * K + k]);
-            for (int t = 0; t < HW_ROWS + HW_COLS; ++t) tick();
-            for (int j = 0; j < HW_COLS; ++j)
+                obs.activation_writes++;    // one int8 element written to data_in
+            }
+            for (int t = 0; t < HW_ROWS + HW_COLS; ++t) {
+                tick(); obs.ticks_streaming++;
+            }
+            for (int j = 0; j < HW_COLS; ++j) {
                 C_i32[i * N + j] = static_cast<int32_t>(arr.acc_out[j]);
+                obs.output_reads++;         // one int32 element read from acc_out
+            }
         }
     } // guard calls arr.final() here
+
+    TinyXpuPerfCounters::from_observations(obs).print();
 #else
     // CPU fallback: naive float32 MatMul (non-Verilator build only)
     const float* A = static_cast<const float*>(A_raw);

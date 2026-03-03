@@ -26,6 +26,7 @@ message(STATUS "ONNX Runtime lib dir: ${ONNXRUNTIME_LIB_DIR}")
 
 add_library(tinyxpu_ep SHARED
     src/tinyxpu_ep.cpp
+    src/tinyxpu_perf.cpp
 )
 
 target_include_directories(tinyxpu_ep PRIVATE
