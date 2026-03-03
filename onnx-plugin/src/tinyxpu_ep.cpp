@@ -336,10 +336,8 @@ OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(
             return status;
         }
 
-        // Support Add and Mul operators as an example
-        if (op_type && (std::strcmp(op_type, "Add") == 0 ||
-                       std::strcmp(op_type, "Mul") == 0)) {
-            printf("  [SampleEP] Claiming op: %s\n", op_type);
+        if (op_type && std::strcmp(op_type, "MatMul") == 0) {
+            printf("  [TinyXPU EP] Claiming op: MatMul\n");
             fflush(stdout);
 
             // Add each supported node as its own fused group
@@ -515,100 +513,96 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     auto* info = FromOrt(this_);
     (void)compute_state;
 
-    // Get input tensors
-    const OrtValue* input_0 = nullptr;
-    const OrtValue* input_1 = nullptr;
-    OrtStatus* status = info->ort_api->KernelContext_GetInput(kernel_context, 0, &input_0);
-    if (status != nullptr) return status;
-    status = info->ort_api->KernelContext_GetInput(kernel_context, 1, &input_1);
-    if (status != nullptr) return status;
+    // ---- fetch inputs -------------------------------------------------------
+    const OrtValue* input_A = nullptr;
+    const OrtValue* input_B = nullptr;
+    OrtStatus* status = info->ort_api->KernelContext_GetInput(kernel_context, 0, &input_A);
+    if (status) return status;
+    status = info->ort_api->KernelContext_GetInput(kernel_context, 1, &input_B);
+    if (status) return status;
+    if (!input_A || !input_B)
+        return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT, "MatMul: missing inputs");
 
-    if (!input_0 || !input_1) {
-        return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT, "Missing inputs");
-    }
+    // ---- read shapes --------------------------------------------------------
+    auto read_2d = [&](const OrtValue* t, int64_t& rows, int64_t& cols) -> OrtStatus* {
+        OrtTensorTypeAndShapeInfo* si = nullptr;
+        OrtStatus* s = info->ort_api->GetTensorTypeAndShape(t, &si);
+        if (s) return s;
+        size_t ndim = 0;
+        s = info->ort_api->GetDimensionsCount(si, &ndim);
+        if (!s && ndim == 2) {
+            int64_t d[2];
+            s = info->ort_api->GetDimensions(si, d, 2);
+            rows = d[0]; cols = d[1];
+        } else if (!s) {
+            s = info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT, "MatMul: only 2-D tensors supported");
+        }
+        info->ort_api->ReleaseTensorTypeAndShapeInfo(si);
+        return s;
+    };
 
-    // Get tensor info
-    OrtTensorTypeAndShapeInfo* input_info = nullptr;
-    status = info->ort_api->GetTensorTypeAndShape(input_0, &input_info);
-    if (status != nullptr) return status;
+    int64_t M = 0, K_A = 0, K_B = 0, N = 0;
+    status = read_2d(input_A, M, K_A);
+    if (status) return status;
+    status = read_2d(input_B, K_B, N);
+    if (status) return status;
+    if (K_A != K_B)
+        return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT, "MatMul: inner dimensions mismatch");
+    const int64_t K = K_A;
 
-    size_t num_dims = 0;
-    status = info->ort_api->GetDimensionsCount(input_info, &num_dims);
-    if (status != nullptr) {
-        info->ort_api->ReleaseTensorTypeAndShapeInfo(input_info);
-        return status;
-    }
-
-    std::vector<int64_t> dims(num_dims);
-    status = info->ort_api->GetDimensions(input_info, dims.data(), num_dims);
-    if (status != nullptr) {
-        info->ort_api->ReleaseTensorTypeAndShapeInfo(input_info);
-        return status;
-    }
-
-    size_t total_elements = 1;
-    for (auto d : dims) total_elements *= static_cast<size_t>(d);
-
-    info->ort_api->ReleaseTensorTypeAndShapeInfo(input_info);
-
-    // Create output tensor
+    // ---- create output C (M x N) --------------------------------------------
+    const int64_t out_dims[2] = {M, N};
     OrtValue* output = nullptr;
-    status = info->ort_api->KernelContext_GetOutput(kernel_context, 0, dims.data(), num_dims, &output);
-    if (status != nullptr) return status;
+    status = info->ort_api->KernelContext_GetOutput(kernel_context, 0, out_dims, 2, &output);
+    if (status) return status;
+    if (!output)
+        return info->ort_api->CreateStatus(ORT_FAIL, "MatMul: failed to allocate output");
 
-    if (!output) {
-        return info->ort_api->CreateStatus(ORT_FAIL, "Failed to create output");
-    }
-
-    // Get data pointers (assuming float tensors for this sample)
-    const float* data_0 = nullptr;
-    const float* data_1 = nullptr;
-    float* data_out = nullptr;
-
-    status = info->ort_api->GetTensorData(input_0, (const void**)&data_0);
-    if (status != nullptr) return status;
-    status = info->ort_api->GetTensorData(input_1, (const void**)&data_1);
-    if (status != nullptr) return status;
-    status = info->ort_api->GetTensorMutableData(output, (void**)&data_out);
-    if (status != nullptr) return status;
+    // ---- data pointers (float32) --------------------------------------------
+    const float* A = nullptr;
+    const float* B = nullptr;
+    float* C = nullptr;
+    status = info->ort_api->GetTensorData(input_A, (const void**)&A);
+    if (status) return status;
+    status = info->ort_api->GetTensorData(input_B, (const void**)&B);
+    if (status) return status;
+    status = info->ort_api->GetTensorMutableData(output, (void**)&C);
+    if (status) return status;
 
 #ifdef TINYXPU_USE_VERILATOR
-    // TODO: implement tiled matmul via Verilator-compiled array.sv.
+    // TODO: tiled MatMul via Verilator-compiled array.sv.
     //
-    // The array is TINYXPU_ARRAY_ROWS x TINYXPU_ARRAY_COLS PEs.
-    // Sketch for one output tile (weight-stationary):
+    // No ISA, instruction decoder, unified buffer, or dedicated accumulator
+    // are needed: driving Verilator from C++ replaces all of those.
+    //
+    // What IS needed (all in software):
+    //   1. Tiling loop — split M×K×N into ROWS×ROWS×COLS tiles
+    //   2. Quantization — cast float32 inputs to int8 per tile
+    //   3. Clock loop — ROWS+COLS ticks per output row per tile
+    //   4. Accumulation — sum int32 tile results into float32 C
+    //
+    // Sketch for one tile (B_tile is ROWS×COLS, A_row is 1×ROWS):
     //
     //   VerilatedContext ctx;
     //   Varray arr{&ctx};
-    //
-    //   // Reset
-    //   arr.rst_n = 0; arr.clk = 0; arr.eval();
-    //   arr.clk = 1;   arr.eval();
-    //   arr.rst_n = 1;
-    //
-    //   // Load weights (one element per PE, held stationary during compute)
-    //   arr.weight_ld = 1;
-    //   for (int r = 0; r < TINYXPU_ARRAY_ROWS; r++)
-    //       for (int c = 0; c < TINYXPU_ARRAY_COLS; c++)
-    //           arr.weight_in[r * TINYXPU_ARRAY_COLS + c] = B[r][c];  // row-major flat index
-    //   tick(arr); arr.weight_ld = 0;
-    //
-    //   // Stream K activation columns east, accumulate partial sums south
-    //   arr.en = 1;
-    //   for (int k = 0; k < K; k++) {
-    //       for (int r = 0; r < TINYXPU_ARRAY_ROWS; r++)
-    //           arr.data_in[r] = A[r][k];  // int8
-    //       tick(arr);
-    //   }
-    //   // arr.acc_out[c] now holds the dot product for output column c
-    //
+    //   // reset, load B_tile weights, then for each output row i:
+    //   //   arr.en = 1;
+    //   //   for (int k = 0; k < ROWS; k++) arr.data_in[k] = A_int8[i][k];
+    //   //   tick ROWS+COLS times;
+    //   //   for (int j = 0; j < COLS; j++) C[i][j] += (float)arr.acc_out[j];
     //   arr.final();
-    (void)data_0; (void)data_1; (void)data_out; (void)total_elements;
-    return info->ort_api->CreateStatus(ORT_NOT_IMPLEMENTED, "SIM stub: Verilator compute not yet implemented");
+    (void)A; (void)B; (void)C; (void)M; (void)K; (void)N;
+    return info->ort_api->CreateStatus(ORT_NOT_IMPLEMENTED,
+        "TinyXPU SIM: MatMul via Verilator not yet implemented");
 #else
-    // CPU fallback: element-wise addition
-    for (size_t i = 0; i < total_elements; ++i) {
-        data_out[i] = data_0[i] + data_1[i];
+    // CPU fallback: naive float32 matmul
+    for (int64_t i = 0; i < M; ++i) {
+        for (int64_t j = 0; j < N; ++j) {
+            float acc = 0.0f;
+            for (int64_t k = 0; k < K; ++k)
+                acc += A[i * K + k] * B[k * N + j];
+            C[i * N + j] = acc;
+        }
     }
 #endif
 
