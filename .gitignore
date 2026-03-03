@@ -2,4 +2,5 @@ SYNTAX: GLOB
 
 build/**
 test/sim_build
+test/sim_build_array
 __pycache__

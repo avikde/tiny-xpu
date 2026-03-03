@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(tiny-xpu LANGUAGES NONE)
+project(tiny-xpu LANGUAGES NONE CXX)
 
 # ---------- tool discovery ----------
 find_program(IVERILOG iverilog REQUIRED)
@@ -41,6 +41,8 @@ if(YOSYS)
 
     add_custom_target(synth DEPENDS ${SYNTH_JSON})
 endif()
+
+add_subdirectory(onnx-plugin)
 
 # ---------- cocotb tests (run via: ctest from build/) ----------
 # Each test/test_*.py uses cocotb_tools.runner to compile and simulate.
