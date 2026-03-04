@@ -8,8 +8,8 @@ NumPy reference.
 Usage:
     python scripts/run_matmul.py [path/to/libtinyxpu_ep.so]
 
-If no path is given, defaults to build/libtinyxpu_ep.so relative to the
-repo root.
+If no path is given, defaults to build/onnx-plugin/libtinyxpu_ep.so relative
+to the repo root.
 """
 import os
 import sys
@@ -40,18 +40,50 @@ def main() -> int:
     print(f"Plugin               : {plugin_path}")
     print()
 
+    # =========================================================================
+    # Register plugin EP and enumerate devices
+    # =========================================================================
+    print(f"Registering TinyXPU EP from: {plugin_path}")
     ort.register_execution_provider_library("SampleEP", plugin_path)
+    print("Plugin EP registered successfully!\n")
 
-    ep_devices = [d for d in ort.get_ep_devices() if "SampleEP" in d.ep_name]
-    if not ep_devices:
+    all_ep_devices = ort.get_ep_devices()
+    tinyxpu_devices = []
+
+    print(f"Found {len(all_ep_devices)} EP device(s):")
+    for i, ep_device in enumerate(all_ep_devices):
+        hw = ep_device.device
+        hw_type = ort.OrtHardwareDeviceType(hw.type)
+        print(f"  EP Device {i}:")
+        print(f"    Name           : {ep_device.ep_name}")
+        print(f"    Vendor         : {ep_device.ep_vendor}")
+        print(f"    HW Device Type : {hw_type.name}")
+        print(f"    HW Vendor      : {hw.vendor}")
+        print(f"    HW Vendor ID   : 0x{hw.vendor_id:04x}")
+        print(f"    HW Device ID   : 0x{hw.device_id:04x}")
+        if "SampleEP" in ep_device.ep_name:
+            tinyxpu_devices.append(ep_device)
+    print()
+
+    if not tinyxpu_devices:
         print("ERROR: TinyXPU EP device not found after registration.")
         return 1
 
+    # =========================================================================
+    # Create session (triggers GetCapability — EP claims MatMulInteger)
+    # =========================================================================
     session_options = ort.SessionOptions()
-    session_options.add_provider_for_devices(ep_devices, {})
+    session_options.add_provider_for_devices(tinyxpu_devices, {})
 
-    session = ort.InferenceSession(model_path, sess_opts=session_options)
+    print("Creating inference session (EP will claim MatMulInteger)...")
+    sys.stdout.flush()
+    session = ort.InferenceSession(model_path, sess_options=session_options)
+    sys.stdout.flush()
+    print("Session created.\n")
 
+    # =========================================================================
+    # Run inference
+    # =========================================================================
     # Test input: 4 rows x 4 columns, int8.
     # With the diagonal weight W = diag(1, 2, 3, 4), row i of Y is
     # row i of X element-wise scaled by [1, 2, 3, 4].
@@ -79,9 +111,13 @@ def main() -> int:
     print(W_ref.astype(np.int8))
     print()
 
+    print("Running inference (perf counters printed by C++ EP below):")
+    sys.stdout.flush()
     result = session.run(None, {"X": A})
-    Y = result[0]
+    sys.stdout.flush()  # ensure C printf output has flushed before Python continues
+    print()
 
+    Y = result[0]
     print("Output Y = A @ W (int32, from TinyXPU EP):")
     print(Y)
     print()
@@ -89,17 +125,20 @@ def main() -> int:
     print(expected)
     print()
 
-    if np.array_equal(Y, expected):
+    # =========================================================================
+    # Verify and cleanup
+    # =========================================================================
+    ok = np.array_equal(Y, expected)
+    if ok:
         print("PASS: TinyXPU output matches NumPy reference.")
     else:
         print("FAIL: output mismatch!")
         print("Diff:")
         print(Y - expected)
-        ort.unregister_execution_provider_library("SampleEP")
-        return 1
 
+    del session
     ort.unregister_execution_provider_library("SampleEP")
-    return 0
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
