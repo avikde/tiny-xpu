@@ -16,6 +16,8 @@ import os
 import sys
 
 import numpy as np
+import onnx
+from onnx import numpy_helper
 import onnxruntime as ort
 
 import tinyxpu_perf
@@ -92,30 +94,25 @@ def main() -> int:
     # =========================================================================
     # Run inference
     # =========================================================================
-    # Test input: 4 rows x 4 columns, int8.
-    # With the diagonal weight W = diag(1, 2, 3, 4), row i of Y is
-    # row i of X element-wise scaled by [1, 2, 3, 4].
-    A = np.array([
-        [1, 2, 3,  4],
-        [5, 6, 7,  8],
-        [1, 1, 1,  1],
-        [2, 2, 2,  2],
-    ], dtype=np.int8)
+    # Extract W from the model so the reference stays in sync with matmul.py.
+    model_proto = onnx.load(model_path)
+    W_ref = numpy_helper.to_array(
+        next(t for t in model_proto.graph.initializer if t.name == "W")
+    ).astype(np.int32)
 
-    # Reference: same weight baked into matmul.py
-    W_ref = np.array([
-        [1, 0, 0, 0],
-        [0, 2, 0, 0],
-        [0, 0, 3, 0],
-        [0, 0, 0, 4],
-    ], dtype=np.int32)
+    A = np.array([
+        [1, 2, 3, 4],
+        [5, 6, 7, 8],
+        [1, 1, 1, 1],
+        [2, 2, 2, 2],
+    ], dtype=np.int8)
 
     expected = A.astype(np.int32) @ W_ref
 
     print("Input A (int8):")
     print(A)
     print()
-    print("Weight W (int8, baked in model):")
+    print("Weight W (int8, loaded from model):")
     print(W_ref.astype(np.int8))
     print()
 
