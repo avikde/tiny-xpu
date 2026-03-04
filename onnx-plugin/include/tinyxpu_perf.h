@@ -85,5 +85,4 @@ struct TinyXpuPerfCounters {
 
     // ── Factory and display ──────────────────────────────────────────────────
     static TinyXpuPerfCounters from_observations(const SimObservations& obs);
-    void print() const;
 };

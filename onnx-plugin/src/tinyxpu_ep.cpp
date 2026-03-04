@@ -33,6 +33,11 @@
 // Global API pointers (initialized in CreateEpFactories)
 static ApiPtrs g_apis;
 
+// Perf counters from the most recent MatMulInteger execution.
+// Written by ComputeImpl; read by tinyxpu_get_last_perf().
+// Not thread-safe: single-threaded Verilator simulation assumed.
+static TinyXpuPerfCounters g_last_perf{};
+
 // ============================================================================
 // Exported Plugin Entry Points
 // ============================================================================
@@ -68,6 +73,12 @@ EXPORT_SYMBOL OrtStatus* ORT_API_CALL ReleaseEpFactory(OrtEpFactory* factory) no
     auto* sample_factory = SampleEpFactory::FromOrt(factory);
     delete sample_factory;
     return nullptr;  // Success
+}
+
+// Returns a copy of the perf counters from the most recent MatMulInteger run.
+// Python callers retrieve this via ctypes after session.run().
+EXPORT_SYMBOL void tinyxpu_get_last_perf(TinyXpuPerfCounters* out) noexcept {
+    if (out) *out = g_last_perf;
 }
 
 }  // extern "C"
@@ -684,7 +695,7 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         }
     } // guard calls arr.final() here
 
-    TinyXpuPerfCounters::from_observations(obs).print();
+    g_last_perf = TinyXpuPerfCounters::from_observations(obs);
 #else
     // CPU fallback: naive float32 MatMul (non-Verilator build only)
     const float* A = static_cast<const float*>(A_raw);
