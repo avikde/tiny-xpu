@@ -16,18 +16,13 @@ Set up in WSL or other Linux:
 - `sudo apt install iverilog` -- Icarus Verilog for simulation
 - `sudo apt install yosys` -- Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
 - `sudo apt install verilator` -- Compile SV -> C++ for EP linkage
-- Install pre-built onnxruntime
+- Install pre-built onnxruntime (check https://github.com/microsoft/onnxruntime/releases) -- this is used to build the ONNX EP C++ library
 
 ```bash
-# Create installation directory
 sudo mkdir -p /opt/onnxruntime
-
-# Download the latest release (check https://github.com/microsoft/onnxruntime/releases)
 cd /tmp
-wget https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz
-
-# Extract to /opt/onnxruntime
-sudo tar -xzf onnxruntime-linux-x64-1.23.2.tgz -C /opt/onnxruntime --strip-components=1
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.24.2/onnxruntime-linux-x64-1.24.2.tgz
+sudo tar -xzf onnxruntime-linux-x64-1.24.2.tgz -C /opt/onnxruntime --strip-components=1
 ```
 
 - Add the ONNX Runtime library to your library path:
@@ -44,8 +39,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 # Python tool for more powerful SystemVerilog testing
 pip install cocotb
-# Run ONNX models
-pip install onnxruntime==1.23.2 onnx
+# Run ONNX models (matching onnxruntime version to the downloaded release)
+pip install onnxruntime==1.24.2 onnx
 ```
 
 Build:

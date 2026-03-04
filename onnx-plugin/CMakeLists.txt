@@ -7,15 +7,14 @@ option(BUILD_TEST_APP "Build the test application" ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ============================================================================
 # Find ONNX Runtime
 # ============================================================================
 
-# set(ONNXRUNTIME_INCLUDE_DIR "/opt/onnxruntime/include")
-# set(ONNXRUNTIME_LIB_DIR "/opt/onnxruntime/lib")
-set(ONNXRUNTIME_INCLUDE_DIR "$ENV{HOME}/onnxruntime_install/include/onnxruntime")
-set(ONNXRUNTIME_LIB_DIR "$ENV{HOME}/onnxruntime_install/lib")
+set(ONNXRUNTIME_INCLUDE_DIR "/opt/onnxruntime/include")
+set(ONNXRUNTIME_LIB_DIR "/opt/onnxruntime/lib")
 
 message(STATUS "ONNX Runtime include dir: ${ONNXRUNTIME_INCLUDE_DIR}")
 message(STATUS "ONNX Runtime lib dir: ${ONNXRUNTIME_LIB_DIR}")
