@@ -14,9 +14,28 @@ While there are other projects building up small (~2x2) TPU-inspired designs (se
 Set up in WSL or other Linux: 
 
 - `sudo apt install iverilog` -- Icarus Verilog for simulation
-- Install the [Surfer waveform viewer](https://marketplace.visualstudio.com/items?itemName=surfer-project.surfer) VSCode extension for viewing `.vcd` waveform files
 - `sudo apt install yosys` -- Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
 - `sudo apt install verilator` -- Compile SV -> C++ for EP linkage
+- Install pre-built onnxruntime
+
+```bash
+# Create installation directory
+sudo mkdir -p /opt/onnxruntime
+
+# Download the latest release (check https://github.com/microsoft/onnxruntime/releases)
+cd /tmp
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz
+
+# Extract to /opt/onnxruntime
+sudo tar -xzf onnxruntime-linux-x64-1.23.2.tgz -C /opt/onnxruntime --strip-components=1
+```
+
+- Add the ONNX Runtime library to your library path:
+
+```bash
+echo 'export LD_LIBRARY_PATH=/opt/onnxruntime/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+```
 
 Set up a venv for python packages
 
@@ -40,7 +59,9 @@ make -j
 Important flags:
 - `-DSIM=ON` - link Verilator into the ONNX EP so that it executes verilator simulation. When off, it will attempt to use hardware when implemented.
 
-Test (optional):
+### Test and view waveforms (optional)
+
+- Install the [Surfer waveform viewer](https://marketplace.visualstudio.com/items?itemName=surfer-project.surfer) VSCode extension for viewing `.vcd` waveform files
 
 ```shell
 cd build && ctest --verbose
@@ -48,35 +69,7 @@ cd build && ctest --verbose
 
 Tests produce waveform files (`*.fst`) in `test/sim_build/`. Open them in VSCode with the Surfer extension to inspect signals.
 
-## Running ONNX models
-
-### 1. Build onnxruntime from source (Linux / WSL)
-
-```bash
-git clone --recursive https://github.com/Microsoft/onnxruntime.git
-cd onnxruntime
-git checkout v1.23.2
-# Build, skipping tests
-./build.sh --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --skip_submodule_sync --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
-cmake --install build/Linux/RelWithDebInfo --prefix $HOME/onnxruntime_install
-```
-
-### 2. Configure Library Path
-
-Add the ONNX Runtime library to your library path:
-
-```bash
-echo 'export LD_LIBRARY_PATH=$HOME/onnxruntime_install/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-source ~/.bashrc
-```
-
-### 3. Install ONNX
-
-```sh
-pip install onnx
-```
-
-### 4. Run the matmul ONNX model with tiny-xpu
+## Run the matmul ONNX model with tiny-xpu
 
 The end-to-end flow is: generate an ONNX model → run it through `onnxruntime`
 with the TinyXPU execution provider, which dispatches `MatMulInteger` to the
