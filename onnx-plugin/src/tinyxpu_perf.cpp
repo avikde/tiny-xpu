@@ -1,5 +1,4 @@
 #include "tinyxpu_perf.h"
-#include <cstdio>
 
 TinyXpuPerfCounters TinyXpuPerfCounters::from_observations(const SimObservations& obs)
 {
@@ -53,69 +52,4 @@ TinyXpuPerfCounters TinyXpuPerfCounters::from_observations(const SimObservations
                   + c.scalar_mem_bytes * kDramPJ; // all traffic off-chip
 
     return c;
-}
-
-void TinyXpuPerfCounters::print() const
-{
-    const auto& o = obs;
-    printf("\n[TinyXPU perf] MatMulInteger (%lldx%lld) × (%lldx%lld)  "
-           "array %dx%d\n",
-           (long long)o.M, (long long)o.K,
-           (long long)o.K, (long long)o.N,
-           o.hw_rows, o.hw_cols);
-
-    printf("  ── Clock cycles (observed) ───────────────────────────────────────\n");
-    printf("  Total ticks         : %lld\n",    (long long)obs.ticks_total);
-    printf("    reset  (rst_n=0)  : %lld\n",    (long long)obs.ticks_reset);
-    printf("    weight load       : %lld\n",    (long long)obs.ticks_weight_load);
-    printf("    streaming (en=1)  : %lld\n",    (long long)obs.ticks_streaming);
-    printf("    other overhead    : %lld\n",    (long long)(obs.ticks_total
-                                                 - obs.ticks_reset
-                                                 - obs.ticks_weight_load
-                                                 - obs.ticks_streaming));
-    printf("  Overhead fraction   : %.1f%%  (shrinks as M grows)\n",
-           overhead_frac * 100.0);
-
-    printf("  ── Compute (derived from ticks × PE count) ───────────────────────\n");
-    printf("  Physical MACs       : %lld  (%lld streaming ticks × %d×%d PEs)\n",
-           (long long)hw_mac_events, (long long)obs.ticks_streaming,
-           obs.hw_rows, obs.hw_cols);
-    printf("  Useful MACs         : %lld  (M×K×N = %lld×%lld×%lld)\n",
-           (long long)useful_mac_ops,
-           (long long)o.M, (long long)o.K, (long long)o.N);
-    printf("  MAC efficiency      : %.1f%%  (= K/(hw_rows+hw_cols) = %lld/%d)\n",
-           mac_efficiency * 100.0,
-           (long long)o.K, obs.hw_rows + obs.hw_cols);
-    printf("  [Pipeline note] The remaining %.1f%% of physical MACs are\n"
-           "  pipeline fill/drain — real hardware energy, not useful compute.\n",
-           (1.0 - mac_efficiency) * 100.0);
-
-    printf("  ── Data movement (observed element counts → bytes) ───────────────\n");
-    printf("  Weight writes       : %lld elems × 1 B = %lld B  (SRAM, loaded once)\n",
-           (long long)obs.weight_writes,   (long long)weight_bytes);
-    printf("  Activation writes   : %lld elems × 1 B = %lld B  (DRAM, streamed)\n",
-           (long long)obs.activation_writes, (long long)activation_bytes);
-    printf("  Output reads        : %lld elems × 4 B = %lld B  (DRAM, written)\n",
-           (long long)obs.output_reads,    (long long)output_bytes);
-    printf("  Total               : %lld B   →  arith. intensity %.2f MAC/B\n",
-           (long long)total_mem_bytes, ai_systolic);
-    printf("  Scalar no-cache     : %lld B   →  arith. intensity %.2f MAC/B\n",
-           (long long)scalar_mem_bytes, ai_scalar);
-    printf("  Weight reuse factor : %lld×  (same %lld B loaded once, %lld output rows)\n",
-           (long long)o.M, (long long)weight_bytes, (long long)o.M);
-
-    printf("  ── Energy estimates (pJ) ─────────────────────────────────────────\n");
-    printf("  Constants: MAC=%.1fpJ  SRAM=%.1fpJ/B  DRAM=%.1fpJ/B\n",
-           kMacPJ, kSramPJ, kDramPJ);
-    printf("  Compute (phys MACs) : %7.1f pJ  (%.1fx more than useful-only)\n",
-           e_compute_pj,
-           (useful_mac_ops > 0) ? (double)hw_mac_events / useful_mac_ops : 0.0);
-    printf("  Weight load (SRAM)  : %7.1f pJ\n", e_weight_pj);
-    printf("  Activations (DRAM)  : %7.1f pJ\n", e_activation_pj);
-    printf("  Output (DRAM)       : %7.1f pJ\n", e_output_pj);
-    printf("  Systolic total      : %7.1f pJ\n", e_total_pj);
-    printf("  Scalar baseline     : %7.1f pJ  (%.1fx)\n",
-           e_scalar_pj,
-           (e_total_pj > 0) ? e_scalar_pj / e_total_pj : 0.0);
-    fflush(stdout);
 }

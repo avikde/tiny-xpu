@@ -11,11 +11,14 @@ Usage:
 If no path is given, defaults to build/onnx-plugin/libtinyxpu_ep.so relative
 to the repo root.
 """
+import ctypes
 import os
 import sys
 
 import numpy as np
 import onnxruntime as ort
+
+import tinyxpu_perf
 
 
 def main() -> int:
@@ -75,6 +78,12 @@ def main() -> int:
     session_options = ort.SessionOptions()
     session_options.add_provider_for_devices(tinyxpu_devices, {})
 
+    # Load the same .so via ctypes to access the exported perf getter.
+    # dlopen() returns the same handle as ORT already loaded, so the global
+    # g_last_perf is shared.
+    lib = ctypes.CDLL(plugin_path)
+    tinyxpu_perf.bind(lib)
+
     print("Creating inference session (EP will claim MatMulInteger)...")
     sys.stdout.flush()
     session = ort.InferenceSession(model_path, sess_options=session_options)
@@ -111,10 +120,13 @@ def main() -> int:
     print(W_ref.astype(np.int8))
     print()
 
-    print("Running inference (perf counters printed by C++ EP below):")
+    print("Running inference...")
     sys.stdout.flush()
     result = session.run(None, {"X": A})
-    sys.stdout.flush()  # ensure C printf output has flushed before Python continues
+    sys.stdout.flush()
+
+    perf = tinyxpu_perf.get_last_perf(lib)
+    tinyxpu_perf.print_perf(perf)
     print()
 
     Y = result[0]
