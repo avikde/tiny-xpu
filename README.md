@@ -157,6 +157,22 @@ acc_in ──►          ├──► acc_out
 
 - Multiple PE's connected together form a systolic array
 
+### Input skewing
+
+The standard way to fully utilise a weight-stationary systolic array is **input skewing**: PE row `k` receives its activation one cycle later than PE row `k-1`. For a 4×4 array computing `C = A × B` with M output rows, the driver presents:
+
+```
+Cycle:   0      1      2      3      4     ...   M+2
+Row 0: a00    a10    a20    a30    ...
+Row 1:  0     a01    a11    a21    a31    ...
+Row 2:  0      0     a02    a12    a22    ...
+Row 3:  0      0      0     a03    a13    ...
+```
+
+With skewing, M output rows flow through the pipeline in `M + (ROWS+COLS−1)` total streaming ticks instead of `M × (ROWS+COLS)`, so MAC efficiency approaches 100% as M grows (weight reuse AND compute utilisation both improve). Without skewing the current driver pays the full pipeline fill/drain cost per row, capping MAC efficiency at 12.5% regardless of M.
+
+The skewed input stream must be de-skewed on the output side: `acc_out[j]` for output row `i` is valid at tick `i + ROWS + j`, not all at the same tick.
+
 ## Related projects
 
 There are a number of "tiny TPU"-type projects, due to the current popularity of TPUs and LLMs.
