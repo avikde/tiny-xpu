@@ -100,20 +100,13 @@ def main() -> int:
         next(t for t in model_proto.graph.initializer if t.name == "W")
     ).astype(np.int32)
 
-    A = np.array([
-        [1, 2, 3, 4],
-        [5, 6, 7, 8],
-        [1, 1, 1, 1],
-        [2, 2, 2, 2],
-    ], dtype=np.int8)
+    rng = np.random.default_rng(42)
+    A = rng.integers(-64, 64, size=(512, 4), dtype=np.int8)
 
     expected = A.astype(np.int32) @ W_ref
 
-    print("Input A (int8):")
-    print(A)
-    print()
-    print("Weight W (int8, loaded from model):")
-    print(W_ref.astype(np.int8))
+    print(f"Input A (int8): shape {A.shape},  first row: {A[0]}")
+    print(f"Weight W (int8, loaded from model):\n{W_ref.astype(np.int8)}")
     print()
 
     print("Running inference...")
@@ -124,11 +117,8 @@ def main() -> int:
     print()
 
     Y = result[0]
-    print("Output Y = A @ W (int32, from TinyXPU EP):")
-    print(Y)
-    print()
-    print("Expected (NumPy reference):")
-    print(expected)
+    print(f"Output Y = A @ W (int32): shape {Y.shape},  first row: {Y[0]}")
+    print(f"Expected (NumPy reference):           first row: {expected[0]}")
     print()
 
     # =========================================================================
