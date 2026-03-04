@@ -114,6 +114,16 @@ def print_perf(perf: _TinyXpuPerfCounters) -> None:
     print(f"  Weight reuse factor : {o.M}x"
           f"  (same {perf.weight_bytes} B loaded once, {o.M} output rows)")
 
+    print("  -- Roofline " + "-" * 55)
+    peak_macs_cycle = o.hw_rows * o.hw_cols
+    print(f"  Peak compute        : {peak_macs_cycle} MACs/cycle  ({o.hw_rows}x{o.hw_cols} array)")
+    print(f"  Arith. intensity    : {perf.ai_systolic:.3f} MAC/B  (systolic, = useful MACs / total bytes)")
+    ridge_bw = peak_macs_cycle / perf.ai_systolic if perf.ai_systolic else float("inf")
+    print(f"  Ridge-point BW      : {ridge_bw:.1f} B/cycle  (need this DRAM BW to be compute-bound)")
+    for label, bw in [("4 B/cyc (narrow)", 4), ("16 B/cyc (typical)", 16), ("64 B/cyc (wide)", 64)]:
+        bound = "compute-bound" if bw >= ridge_bw else "memory-bound "
+        print(f"    {label:22s}: {bound}  (peak perf = {min(peak_macs_cycle, bw * perf.ai_systolic):.1f} MACs/cycle)")
+
     print("  -- Energy estimates (pJ) " + "-" * 42)
     print(f"  Constants: MAC=0.1 pJ  SRAM=2.0 pJ/B  DRAM=25.0 pJ/B")
     ratio = perf.hw_mac_events / perf.useful_mac_ops if perf.useful_mac_ops else 0
