@@ -29,7 +29,7 @@ make -j
 Important flags:
 - `-DSIM=ON` - link Verilator into the ONNX EP so that it executes verilator simulation. When off, it will attempt to use hardware when implemented.
 
-Test:
+Test (optional):
 
 ```shell
 cd build && ctest --verbose
@@ -37,23 +37,62 @@ cd build && ctest --verbose
 
 Tests produce waveform files (`*.fst`) in `test/sim_build/`. Open them in VSCode with the Surfer extension to inspect signals.
 
-## Typical MatMul -> Add -> ReLU chain handling
+## Running ONNX models
 
-For CUDA,
+### 1. Build onnxruntime from source (Linux / WSL)
 
-- `MatMul -> Add` will be fused into a single `Gemm(X, W, B, alpha=1, beta=1)` node. CUDA EP then maps Gemm -> `cublasGemmEx`.
-- The Relu remains separate unless you also use a custom CUDA fusion kernel.
+```bash
+git clone --recursive https://github.com/Microsoft/onnxruntime.git
+cd onnxruntime
+git checkout v1.23.2
+# Build, skipping tests
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --skip_submodule_sync --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+cmake --install build/Linux/RelWithDebInfo --prefix $HOME/onnxruntime_install
+```
 
-NPU EPs generally go further
+### 2. Configure Library Path
 
-- Fuse the entire block into a single "FullyConnected with activation" op
-- This is the canonical pattern for FC layers and nearly every NPU compiler (Qualcomm HTP `QNN_OP_FULLY_CONNECTED + QNN_OP_RELU`, [Apple CoreML](https://machinethink.net/blog/peek-inside-coreml/)) fuses these
+Add the ONNX Runtime library to your library path:
 
-## TinyXPU supported operations
+```bash
+echo 'export LD_LIBRARY_PATH=$HOME/onnxruntime_install/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+```
 
-For this project, our goal was to develop something broadly applicable, but useful along the lines above.
+### 3. Run the matmul ONNX model with tiny-xpu
 
-We initially focused on General Matrix Multiply (GEMM); because it parameterizes the scaling constants `α` and `β` (`C = αAB + βC`), it subsumes pure matrix multiplication as a special case and enables fused multiply-accumulate patterns that avoid redundant memory writes. Many types of computations common in deep learning, including matrix multiplication, are [specializations of a GEMM operation](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html). GEMMs show up in [dense fully connected networks](https://docs.nvidia.com/deeplearning/performance/dl-performance-fully-connected/index.html) that are a core component of transformers and RNNs. Lastly, it is one of the [Basic Linear Algebra Subproblems (BLAS)](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) that have been the bedrock of scientific computing.
+The end-to-end flow is: generate an ONNX model → run it through `onnxruntime`
+with the TinyXPU execution provider, which dispatches `MatMulInteger` to the
+Verilator simulation of the systolic array.
+
+**Step 1 — build** (see above, must use `-DSIM=ON`).
+
+**Step 2 — generate the ONNX model:**
+
+```shell
+python scripts/matmul.py
+# writes scripts/matmul_integer_4x4.onnx
+```
+
+The model contains a single `MatMulInteger` node:
+- `X (int8, [M, 4])`
+- `W (int8, [4, 4])`
+- `Y (int32, [M, 4]) = MatMulInteger(X, W)`
+
+Constraints: `K = N = 4` (the hardware array dimensions).
+`M` is unrestricted — the array streams one row of `X` at a time.
+
+**Step 3 — run with the TinyXPU EP:**
+
+```shell
+python scripts/run_matmul.py
+# optional: python scripts/run_matmul.py path/to/libtinyxpu_ep.so
+```
+
+The script registers the plugin EP, loads the model, feeds a 4×4 `int8`
+input, verifies the `int32` result against a NumPy reference, and prints
+`PASS` on success.  It replaces the old `onnx-plugin/test/test_tinyxpu_ep.py`
+development harness.
 
 ## Systolic array implementation
 
