@@ -85,9 +85,8 @@ def main() -> int:
     tinyxpu_perf.bind(lib)
 
     print("Creating inference session (EP will claim MatMulInteger)...")
-    sys.stdout.flush()
+    sys.stdout.flush()  # flush before C printf in GetCapabilityImpl fires
     session = ort.InferenceSession(model_path, sess_options=session_options)
-    sys.stdout.flush()
     print("Session created.\n")
 
     # =========================================================================
@@ -121,9 +120,7 @@ def main() -> int:
     print()
 
     print("Running inference...")
-    sys.stdout.flush()
     result = session.run(None, {"X": A})
-    sys.stdout.flush()
 
     perf = tinyxpu_perf.get_last_perf(lib)
     tinyxpu_perf.print_perf(perf)
