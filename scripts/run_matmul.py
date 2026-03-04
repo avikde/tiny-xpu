@@ -11,16 +11,16 @@ Usage:
 If no path is given, defaults to build/onnx-plugin/libtinyxpu_ep.so relative
 to the repo root.
 """
+
 import ctypes
 import os
 import sys
 
 import numpy as np
 import onnx
-from onnx import numpy_helper
 import onnxruntime as ort
-
 import tinyxpu_perf
+from onnx import numpy_helper
 
 
 def main() -> int:
@@ -133,10 +133,13 @@ def main() -> int:
         print(Y - expected)
 
     # =========================================================================
-    # Sweep M: show how weight-load amortisation improves with batch size
+    # Sweep M: show how weight-load amortization improves with batch size
     # =========================================================================
-    print("\n--- Weight-load amortisation sweep ---")
-    print(f"{'M':>6}  {'ticks':>6}  {'MAC eff':>8}  {'AI (MAC/B)':>11}  {'wt reuse':>9}")
+    # MAC efficiency = PE utilization = M/(M+ROWS+COLS-2); both reduce to the same ratio.
+    print("\n--- Weight-load amortization sweep (MAC eff = PE utilization) ---")
+    print(
+        f"{'M':>6}  {'ticks':>6}  {'PE util':>8}  {'AI (MAC/B)':>11}  {'wt reuse':>9}"
+    )
     print("-" * 50)
 
     M_values = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
@@ -145,8 +148,10 @@ def main() -> int:
         session.run(None, {"X": A_m})
         p = tinyxpu_perf.get_last_perf(lib)
         o = p.obs
-        print(f"{m:>6}  {o.ticks_streaming:>6}  {p.mac_efficiency*100:>7.1f}%"
-              f"  {p.ai_systolic:>10.3f}  {o.M:>6}x")
+        print(
+            f"{m:>6}  {o.ticks_streaming:>6}  {p.mac_efficiency * 100:>7.1f}%"
+            f"  {p.ai_systolic:>10.3f}  {o.M:>6}x"
+        )
 
     del session
     ort.unregister_execution_provider_library("SampleEP")
