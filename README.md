@@ -59,7 +59,13 @@ echo 'export LD_LIBRARY_PATH=$HOME/onnxruntime_install/lib:$LD_LIBRARY_PATH' >> 
 source ~/.bashrc
 ```
 
-### 3. Run the matmul ONNX model with tiny-xpu
+### 3. Install ONNX
+
+```sh
+pip install onnx
+```
+
+### 4. Run the matmul ONNX model with tiny-xpu
 
 The end-to-end flow is: generate an ONNX model → run it through `onnxruntime`
 with the TinyXPU execution provider, which dispatches `MatMulInteger` to the
@@ -70,8 +76,9 @@ Verilator simulation of the systolic array.
 **Step 2 — generate the ONNX model:**
 
 ```shell
-python scripts/matmul.py
-# writes scripts/matmul_integer_4x4.onnx
+cd scripts
+python3 matmul.py
+# writes matmul_integer_4x4.onnx
 ```
 
 The model contains a single `MatMulInteger` node:
@@ -85,8 +92,7 @@ Constraints: `K = N = 4` (the hardware array dimensions).
 **Step 3 — run with the TinyXPU EP:**
 
 ```shell
-python scripts/run_matmul.py
-# optional: python scripts/run_matmul.py path/to/libtinyxpu_ep.so
+python3 run_matmul.py
 ```
 
 The script registers the plugin EP, loads the model, feeds a 4×4 `int8`
