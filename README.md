@@ -113,8 +113,16 @@ development harness.
 
 ## Systolic array implementation
 
-Kung paper
-- Network of PE's
+The systolic array is a `ROWS × COLS` grid of processing elements (PEs) connected in a mesh. Each PE performs one multiply-accumulate per cycle. The array size is set by `ROWS` and `COLS` parameters, overridable at elaboration time (e.g. via Verilator's `-GROWS=N -GCOLS=N`).
+
+Current dataflow is **weight-stationary**: weights are loaded once into the PE grid, then activations stream east (→) through each row while partial sums cascade south (↓) through each column, accumulating as they go. This maximises weight reuse — each weight participates in every row of the output tile without being reloaded.
+
+Input and output ports of `array.sv`:
+- `data_in[ROWS]` — one int8 activation per row, presented sequentially (one output row per streaming cycle); internal skew registers stagger them automatically
+- `weight_in[ROWS*COLS]`, `weight_ld` — load all PE weights in one cycle before streaming begins
+- `acc_out[COLS]` — one int32 result per column, de-skewed so all columns are valid at the same cycle
+
+> **Note on configurable dataflow:** It is feasible to add a `DATAFLOW` parameter (weight-stationary vs output-stationary) switchable via a CMake option that passes `-GDATAFLOW=0/1` to Verilator. However, the two modes differ enough in their weight-loading interface (`weight_in[ROWS*COLS]` broadcast vs `weight_in[COLS]` streaming) that a clean unified port is awkward in SV. The most practical approach would be separate `array_ws.sv` / `array_os.sv` files, selected by the CMake `ARRAY_DATAFLOW` option, sharing a common `pe.sv` modified with a `generate if` for the accumulation logic.
 
 ### PE (`pe.sv`)
 
@@ -154,13 +162,9 @@ acc_in ──►          ├──► acc_out
          └──────────┘
 ```
 
-### Networked PE's -> Systolic array
-
-- Multiple PE's connected together form a systolic array
-
 ### Input skewing
 
-The standard way to fully utilise a weight-stationary systolic array is **input skewing**: PE row `k` receives its activation one cycle later than PE row `k-1`. For a 4×4 array computing `C = A × B` with M output rows, the driver presents:
+The standard way to fully utilize a weight-stationary systolic array is **input skewing**: PE row `k` receives its activation one cycle later than PE row `k-1`. For a 4×4 array computing `C = A × B` with M output rows, the driver presents:
 
 ```
 Cycle:   0      1      2      3      4     ...   M+2
@@ -180,4 +184,3 @@ There are a number of "tiny TPU"-type projects, due to the current popularity of
 
 - [tiny-tpu-v2/tiny-tpu](https://github.com/tiny-tpu-v2/tiny-tpu/tree/main) - 2x2 matmul + ReLU to solve XOR problem
 - [Alanma23/tinytinyTPU](https://github.com/Alanma23/tinytinyTPU) - 2x2 matmul + ReLU / ReLU6
-
