@@ -7,3 +7,4 @@ __pycache__
 scripts/*.onnx
 .venv
 .cache
+scripts/*.png
