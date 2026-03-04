@@ -138,9 +138,9 @@ def main() -> int:
     # MAC efficiency = PE utilization = M/(M+ROWS+COLS-2); both reduce to the same ratio.
     print("\n--- Weight-load amortization sweep (MAC eff = PE utilization) ---")
     print(
-        f"{'M':>6}  {'ticks':>6}  {'PE util':>8}  {'AI (MAC/B)':>11}  {'wt reuse':>9}"
+        f"{'M':>6}  {'ticks':>6}  {'PE util':>8}  {'AI (MAC/B)':>11}  {'wt reuse':>9}  {'overhead':>9}"
     )
-    print("-" * 50)
+    print("-" * 62)
 
     M_values = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
     for m in M_values:
@@ -150,7 +150,7 @@ def main() -> int:
         o = p.obs
         print(
             f"{m:>6}  {o.ticks_streaming:>6}  {p.mac_efficiency * 100:>7.1f}%"
-            f"  {p.ai_systolic:>10.3f}  {o.M:>6}x"
+            f"  {p.ai_systolic:>10.3f}  {o.M:>6}x  {p.overhead_frac * 100:>8.1f}%"
         )
 
     del session
