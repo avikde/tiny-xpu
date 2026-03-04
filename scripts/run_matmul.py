@@ -132,6 +132,22 @@ def main() -> int:
         print("Diff:")
         print(Y - expected)
 
+    # =========================================================================
+    # Sweep M: show how weight-load amortisation improves with batch size
+    # =========================================================================
+    print("\n--- Weight-load amortisation sweep ---")
+    print(f"{'M':>6}  {'ticks':>6}  {'MAC eff':>8}  {'AI (MAC/B)':>11}  {'wt reuse':>9}")
+    print("-" * 50)
+
+    M_values = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    for m in M_values:
+        A_m = rng.integers(-64, 64, size=(m, 4), dtype=np.int8)
+        session.run(None, {"X": A_m})
+        p = tinyxpu_perf.get_last_perf(lib)
+        o = p.obs
+        print(f"{m:>6}  {o.ticks_streaming:>6}  {p.mac_efficiency*100:>7.1f}%"
+              f"  {p.ai_systolic:>10.3f}  {o.M:>6}x")
+
     del session
     ort.unregister_execution_provider_library("SampleEP")
     return 0 if ok else 1
