@@ -23,7 +23,7 @@ def main() -> int:
     repo_root = os.path.join(script_dir, "..")
 
     model_path = os.path.join(script_dir, "matmul_integer_4x4.onnx")
-    default_plugin = os.path.join(repo_root, "build", "libtinyxpu_ep.so")
+    default_plugin = os.path.join(repo_root, "build", "onnx-plugin", "libtinyxpu_ep.so")
     plugin_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else default_plugin)
 
     if not os.path.exists(model_path):

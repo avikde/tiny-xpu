@@ -15,8 +15,18 @@ Set up in WSL or other Linux:
 - `sudo apt install iverilog` -- Icarus Verilog for simulation
 - Install the [Surfer waveform viewer](https://marketplace.visualstudio.com/items?itemName=surfer-project.surfer) VSCode extension for viewing `.vcd` waveform files
 - `sudo apt install yosys` -- Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
-- `pip install cocotb` -- Python tool for more powerful testing capabilities
 - `sudo apt install verilator` -- Compile SV -> C++ for EP linkage
+
+Set up a venv for python packages
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+# Python tool for more powerful SystemVerilog testing
+pip install cocotb
+# Run ONNX models
+pip install onnxruntime==1.23.2 onnx
+```
 
 Build:
 
