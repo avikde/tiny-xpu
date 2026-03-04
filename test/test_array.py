@@ -12,6 +12,13 @@ from cocotb.triggers import RisingEdge, ClockCycles
 ROWS = 4
 COLS = 4
 
+# Pipeline latency from the testbench's perspective: the number of clock edges
+# to wait after presenting streaming cycle i before acc_out reflects row i.
+# Hardware computes the result at tick i + ROWS + COLS - 1, but cocotb reads
+# signal values before the current posedge's non-blocking assignments commit,
+# so one additional edge is needed to observe the result → ROWS + COLS total.
+PIPELINE_LAT = ROWS + COLS
+
 
 async def reset_dut(dut):
     """Apply active-low reset for a few cycles."""
@@ -38,22 +45,43 @@ async def load_weights(dut, B):
     await RisingEdge(dut.clk)  # let weights settle
 
 
-async def stream_row(dut, row):
-    """Drive one row of int8 activations; wait for the pipeline to drain.
+async def stream_and_collect(dut, A):
+    """Stream M rows of activations and collect M rows of outputs.
 
-    Latency analysis (all outputs registered):
-      - data_wire[k][j] sees data_in[k] after j east-pipeline stages  → j cycles
-      - acc_wire[ROWS][j] accumulates spatially through ROWS south stages → ROWS more cycles
-      - acc_out[j] is valid at edge  j + ROWS - 1  after data is applied
+    With hardware input skewing and output de-skewing, the driver simply
+    presents row i of A on data_in[*] at streaming cycle i.  The module
+    delays each row internally and aligns acc_out[*] so that all columns
+    for output row i are valid simultaneously at cycle i + ROWS + COLS - 1.
 
-    Worst case (j = COLS-1):  COLS-1 + ROWS - 1 = ROWS + COLS - 2  cycles.
-    Waiting ROWS + COLS edges gives one cycle of margin (mirrors test_pe.py's
-    double-await pattern) and keeps all acc_out[0..COLS-1] stable simultaneously.
+    Total latency: M + max(0, ROWS + COLS - 1 - M) = ROWS + COLS - 1 cycles
+    from the first drive until the first output is read.
     """
-    for k in range(ROWS):
-        dut.data_in[k].value = int(row[k])
-    await ClockCycles(dut.clk, ROWS + COLS)
-    return [dut.acc_out[j].value.to_signed() for j in range(COLS)]
+    M = len(A)
+
+    # Stream all M input rows, one per clock cycle
+    for i in range(M):
+        for r in range(ROWS):
+            dut.data_in[r].value = int(A[i][r])
+        await RisingEdge(dut.clk)
+
+    # Zero inputs after streaming
+    for r in range(ROWS):
+        dut.data_in[r].value = 0
+
+    # We have already spent M clock edges.  Wait for the pipeline to produce
+    # the first output (PIPELINE_LAT edges from cycle 0).
+    extra_wait = PIPELINE_LAT - M
+    if extra_wait > 0:
+        await ClockCycles(dut.clk, extra_wait)
+
+    # Collect M output rows; acc_out is stable immediately after each edge.
+    results = []
+    for i in range(M):
+        results.append([dut.acc_out[j].value.to_signed() for j in range(COLS)])
+        if i < M - 1:
+            await RisingEdge(dut.clk)
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +112,6 @@ async def test_matmul_identity(dut):
 
     await reset_dut(dut)
 
-    # B = I
     I = [[1 if r == c else 0 for c in range(COLS)] for r in range(ROWS)]
     await load_weights(dut, I)
 
@@ -96,11 +123,12 @@ async def test_matmul_identity(dut):
     ]
 
     dut.en.value = 1
+    results = await stream_and_collect(dut, A)
+
     for i, row in enumerate(A):
-        result = await stream_row(dut, row)
         for j in range(COLS):
-            assert result[j] == row[j], (
-                f"Identity check C[{i}][{j}]: expected {row[j]}, got {result[j]}"
+            assert results[i][j] == row[j], (
+                f"Identity check C[{i}][{j}]: expected {row[j]}, got {results[i][j]}"
             )
 
 
@@ -108,9 +136,10 @@ async def test_matmul_identity(dut):
 async def test_matmul_4x4(dut):
     """Full 4×4 integer matrix multiply, verified against numpy.
 
-    Computes  C = A × B  where A is M×K (M=4, K=ROWS) and B is K×N (N=COLS).
-    data_in[k] carries row k of the inner dimension for each output row i;
-    acc_out[j] returns C[i][j] = Σ_k A[i][k] × B[k][j] after the pipeline drains.
+    Computes C = A × B where A is M×K (M=4, K=ROWS) and B is K×N (N=COLS).
+    data_in[k] carries the k-th element of each input row; the module
+    applies input skewing internally.  acc_out[j] returns C[i][j] for all j
+    simultaneously after the de-skew pipeline.
     """
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
@@ -126,12 +155,13 @@ async def test_matmul_4x4(dut):
     await load_weights(dut, B)
 
     dut.en.value = 1
-    for i in range(4):  # M = 4 output rows
-        result = await stream_row(dut, A[i])
+    results = await stream_and_collect(dut, A)
+
+    for i in range(4):
         for j in range(COLS):
             expected = int(C_expected[i][j])
-            assert result[j] == expected, (
-                f"C[{i}][{j}]: expected {expected}, got {result[j]}"
+            assert results[i][j] == expected, (
+                f"C[{i}][{j}]: expected {expected}, got {results[i][j]}"
             )
 
 

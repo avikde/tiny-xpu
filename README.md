@@ -6,6 +6,7 @@ While there are other projects building up small (~2x2) TPU-inspired designs (se
 
 - Modular SystemVerilog setup to support non-rectangular systolic architectures
 - Easy software interface via ONNX EP and maybe others
+- Scaffolding to evaluate architectural tradeoffs, include performance counters
 - Support for FPGA deployment
 
 ## Setup, build, and test

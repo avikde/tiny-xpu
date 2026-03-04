@@ -7,12 +7,21 @@
 //   - Partial sums cascade south (↓) one lane per column
 //   - Weights are loaded once per tile (weight_ld=1), then held stationary
 //
-// After K streaming cycles the bottom row's acc_out holds one output tile of
-// C = A × B, where A is ROWS×K and B is K×COLS.
+// Input skewing: row r receives its activation r cycles later than row 0,
+// so that all K elements of output row i arrive at column 0 of their
+// respective PE rows at the same effective cycle.  This is implemented
+// with shift-register delay lines inside this module; the driver simply
+// presents row i of A on data_in[*] at streaming cycle i with no manual
+// staggering.
 //
-// Array size is set by ROWS and COLS parameters.  When built via Verilator the
-// values are overridden at elaboration time with -GROWS=N -GCOLS=N so no
-// source edits are needed to change the tile size.
+// Output de-skewing: acc_wire[ROWS][c] (before de-skew) is valid at cycle
+// i + ROWS + c for output row i.  De-skew registers add COLS-1-c delay
+// stages per column so that all acc_out[*] are valid simultaneously at
+// cycle i + ROWS + COLS - 1.
+//
+// Array size is set by ROWS and COLS parameters.  When built via Verilator
+// the values are overridden at elaboration time with -GROWS=N -GCOLS=N so
+// no source edits are needed to change the tile size.
 
 module array #(
     parameter int ROWS       = 4,
@@ -24,7 +33,9 @@ module array #(
     input  logic rst_n,
     input  logic en,
 
-    // Activation inputs — one per row, stream east through the array
+    // Activation inputs — one per row, stream east through the array.
+    // Present row i of A on data_in[*] at streaming cycle i; the module
+    // applies the per-row skew internally.
     input  logic signed [DATA_WIDTH-1:0] data_in  [ROWS],
     // Activation outputs — rightmost column passthrough (useful for chaining)
     output logic signed [DATA_WIDTH-1:0] data_out [ROWS],
@@ -36,33 +47,70 @@ module array #(
     input  logic                         weight_ld,
     input  logic signed [DATA_WIDTH-1:0] weight_in [ROWS*COLS],
 
-    // Accumulated results from the bottom row, one per column
+    // Accumulated results from the bottom row, one per column.
+    // De-skewed: all columns valid simultaneously at cycle i + ROWS + COLS - 1
+    // for output row i.
     output logic signed [ACC_WIDTH-1:0]  acc_out [COLS]
 );
 
     // Horizontal data wires: data_wire[r][c] feeds PE(r,c).data_in
-    // Column 0 = external input, column COLS = external output
+    // Column 0 = skewed input, column COLS = rightmost passthrough output
     logic signed [DATA_WIDTH-1:0] data_wire [ROWS][COLS+1];
 
     // Vertical accumulator wires: acc_wire[r][c] feeds PE(r,c).acc_in
-    // Row 0 = zero (top boundary), row ROWS = external output
+    // Row 0 = zero (top boundary), row ROWS = raw PE output (before de-skew)
     logic signed [ACC_WIDTH-1:0] acc_wire [ROWS+1][COLS];
 
     // ----------------------------------------------------------------
-    // Boundary connections
+    // Boundary: data_out and top acc boundary
     // ----------------------------------------------------------------
 
     genvar r_b, c_b;
-
     generate
-        for (r_b = 0; r_b < ROWS; r_b++) begin : gen_data_boundary
-            assign data_wire[r_b][0]    = data_in[r_b];
-            assign data_out[r_b]        = data_wire[r_b][COLS];
+        for (r_b = 0; r_b < ROWS; r_b++) begin : gen_data_out
+            assign data_out[r_b] = data_wire[r_b][COLS];
+        end
+        for (c_b = 0; c_b < COLS; c_b++) begin : gen_acc_top
+            assign acc_wire[0][c_b] = '0;
+        end
+    endgenerate
+
+    // ----------------------------------------------------------------
+    // Input skewing: row r is delayed by r clock cycles.
+    // skew_buf[r][k]: stage k of the shift register for row r.
+    //   row 0 → direct wire (0 FFs)
+    //   row 1 → 1 FF  (stage 0 only)
+    //   row r → r FFs (stages 0..r-1)
+    // ----------------------------------------------------------------
+
+    logic signed [DATA_WIDTH-1:0] skew_buf [ROWS][ROWS]; // [row][stage]
+
+    genvar r_sk, k_sk;
+    generate
+        // Row 0: no delay, connect directly
+        assign data_wire[0][0] = data_in[0];
+
+        // Stage 0 for rows 1..ROWS-1: latch data_in
+        for (r_sk = 1; r_sk < ROWS; r_sk++) begin : gen_skew_s0
+            always_ff @(posedge clk or negedge rst_n) begin
+                if (!rst_n) skew_buf[r_sk][0] <= '0;
+                else        skew_buf[r_sk][0] <= data_in[r_sk];
+            end
         end
 
-        for (c_b = 0; c_b < COLS; c_b++) begin : gen_acc_boundary
-            assign acc_wire[0][c_b] = '0;
-            assign acc_out[c_b]     = acc_wire[ROWS][c_b];
+        // Chain stages 1..r-1 for rows 2..ROWS-1
+        for (r_sk = 2; r_sk < ROWS; r_sk++) begin : gen_skew_chain_row
+            for (k_sk = 1; k_sk < r_sk; k_sk++) begin : gen_skew_chain_stage
+                always_ff @(posedge clk or negedge rst_n) begin
+                    if (!rst_n) skew_buf[r_sk][k_sk] <= '0;
+                    else        skew_buf[r_sk][k_sk] <= skew_buf[r_sk][k_sk-1];
+                end
+            end
+        end
+
+        // Connect shift register outputs to data_wire column 0
+        for (r_sk = 1; r_sk < ROWS; r_sk++) begin : gen_skew_connect
+            assign data_wire[r_sk][0] = skew_buf[r_sk][r_sk-1];
         end
     endgenerate
 
@@ -71,7 +119,6 @@ module array #(
     // ----------------------------------------------------------------
 
     genvar r, c;
-
     generate
         for (r = 0; r < ROWS; r++) begin : gen_row
             for (c = 0; c < COLS; c++) begin : gen_col
@@ -90,6 +137,46 @@ module array #(
                     .acc_out   (acc_wire[r+1][c])
                 );
             end
+        end
+    endgenerate
+
+    // ----------------------------------------------------------------
+    // Output de-skewing: column c needs COLS-1-c additional delay stages.
+    // deskew_buf[c][k]: stage k of the de-skew shift register for column c.
+    //   col COLS-1 → direct wire (0 FFs)
+    //   col COLS-2 → 1 FF
+    //   col c      → COLS-1-c FFs (stages 0..COLS-2-c)
+    // After de-skewing, acc_out[*] are all valid at cycle i + ROWS + COLS - 1.
+    // ----------------------------------------------------------------
+
+    logic signed [ACC_WIDTH-1:0] deskew_buf [COLS][COLS]; // [col][stage]
+
+    genvar c_ds, k_ds;
+    generate
+        // Last column: no delay, connect directly
+        assign acc_out[COLS-1] = acc_wire[ROWS][COLS-1];
+
+        // Stage 0 for columns 0..COLS-2: latch acc_wire output
+        for (c_ds = 0; c_ds < COLS-1; c_ds++) begin : gen_deskew_s0
+            always_ff @(posedge clk or negedge rst_n) begin
+                if (!rst_n) deskew_buf[c_ds][0] <= '0;
+                else        deskew_buf[c_ds][0] <= acc_wire[ROWS][c_ds];
+            end
+        end
+
+        // Chain stages 1..COLS-2-c for columns 0..COLS-3
+        for (c_ds = 0; c_ds < COLS-2; c_ds++) begin : gen_deskew_chain_col
+            for (k_ds = 1; k_ds < COLS-1-c_ds; k_ds++) begin : gen_deskew_chain_stage
+                always_ff @(posedge clk or negedge rst_n) begin
+                    if (!rst_n) deskew_buf[c_ds][k_ds] <= '0;
+                    else        deskew_buf[c_ds][k_ds] <= deskew_buf[c_ds][k_ds-1];
+                end
+            end
+        end
+
+        // Connect de-skew outputs to acc_out
+        for (c_ds = 0; c_ds < COLS-1; c_ds++) begin : gen_deskew_connect
+            assign acc_out[c_ds] = deskew_buf[c_ds][COLS-2-c_ds];
         end
     endgenerate
 
