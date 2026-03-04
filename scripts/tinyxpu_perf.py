@@ -99,8 +99,9 @@ def print_perf(perf: _TinyXpuPerfCounters) -> None:
           f"  ({o.ticks_streaming} ticks x {o.hw_rows}x{o.hw_cols} PEs)")
     print(f"  Useful MACs         : {perf.useful_mac_ops}"
           f"  (M x K x N = {o.M}x{o.K}x{o.N})")
+    pipeline_lat = o.hw_rows + o.hw_cols - 2
     print(f"  MAC efficiency      : {perf.mac_efficiency*100:.1f}%"
-          f"  (= K/(hw_rows+hw_cols) = {o.K}/{o.hw_rows+o.hw_cols})")
+          f"  (= M/(M+pipeline_lat) = {o.M}/{o.M+pipeline_lat}, pipeline_lat={pipeline_lat})")
 
     print("  -- Data movement " + "-" * 50)
     print(f"  Weight writes       : {o.weight_writes} elems x 1 B = {perf.weight_bytes} B  (SRAM, once)")

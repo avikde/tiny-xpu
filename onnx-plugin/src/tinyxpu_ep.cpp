@@ -678,19 +678,42 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         arr.weight_ld = 0;
         tick(); obs.ticks_weight_load++;    // settle
 
-        // Stream each output row of A through the array: mirrors stream_row()
+        // Stream all M rows back-to-back (one tick each), then drain.
+        //
+        // Hardware input skewing delays row r by r cycles internally, so all K
+        // elements of output row i arrive at their respective PE column-0 at the
+        // same effective cycle.  Hardware output de-skewing aligns all COLS
+        // acc_out signals so they are valid simultaneously.
+        //
+        // Output row i is valid at tick i + (HW_ROWS + HW_COLS - 2) (0-based).
+        // Reading is interleaved with draining: at each tick t we collect output
+        // row t - (HW_ROWS + HW_COLS - 2) when that index is in [0, M).
+        //
+        // Total ticks = M + (HW_ROWS + HW_COLS - 2).
+        // MAC efficiency → M / (M + HW_ROWS + HW_COLS - 2) ≈ 1 for large M.
+        const int64_t PIPELINE_LAT = HW_ROWS + HW_COLS - 2;
+        const int64_t total_ticks  = M + PIPELINE_LAT;
+
         arr.en = 1;
-        for (int64_t i = 0; i < M; ++i) {
-            for (int k = 0; k < HW_ROWS; ++k) {
-                arr.data_in[k] = static_cast<uint8_t>(A_i8[i * K + k]);
-                obs.activation_writes++;    // one int8 element written to data_in
+        for (int64_t t = 0; t < total_ticks; ++t) {
+            if (t < M) {
+                for (int k = 0; k < HW_ROWS; ++k) {
+                    arr.data_in[k] = static_cast<uint8_t>(A_i8[t * K + k]);
+                    obs.activation_writes++;    // one int8 element written to data_in
+                }
+            } else {
+                for (int k = 0; k < HW_ROWS; ++k) arr.data_in[k] = 0;
             }
-            for (int t = 0; t < HW_ROWS + HW_COLS; ++t) {
-                tick(); obs.ticks_streaming++;
-            }
-            for (int j = 0; j < HW_COLS; ++j) {
-                C_i32[i * N + j] = static_cast<int32_t>(arr.acc_out[j]);
-                obs.output_reads++;         // one int32 element read from acc_out
+
+            tick(); obs.ticks_streaming++;
+
+            // Collect output row (out_row = t - PIPELINE_LAT) when it becomes valid
+            const int64_t out_row = t - PIPELINE_LAT;
+            if (out_row >= 0 && out_row < M) {
+                for (int j = 0; j < HW_COLS; ++j) {
+                    C_i32[out_row * N + j] = static_cast<int32_t>(arr.acc_out[j]);
+                    obs.output_reads++;         // one int32 element read from acc_out
+                }
             }
         }
     } // guard calls arr.final() here
