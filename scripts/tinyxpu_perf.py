@@ -145,7 +145,7 @@ def print_perf(perf: _TinyXpuPerfCounters) -> None:
         f"  Peak compute        : {peak_macs_cycle} MACs/cycle  ({o.hw_rows}x{o.hw_cols} array)"
     )
     print(
-        f"  Arith. intensity    : {perf.ai_systolic:.3f} MAC/B  (systolic, = useful MACs / total bytes)"
+        f"  Arith. intensity    : {perf.ai_systolic:.3f} MAC/B  (systolic = useful MACs / total bytes)"
     )
     ridge_bw = peak_macs_cycle / perf.ai_systolic if perf.ai_systolic else float("inf")
     print(

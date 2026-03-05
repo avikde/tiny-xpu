@@ -59,7 +59,7 @@ struct TinyXpuPerfCounters {
     int64_t output_bytes;       // output_reads  × 4  (int32)
     int64_t total_mem_bytes;
 
-    // Arithmetic intensity: physical MACs per memory byte transferred.
+    // Arithmetic intensity: useful MACs per memory byte transferred.
     // Roofline x-axis position.
     double ai_systolic;
 
