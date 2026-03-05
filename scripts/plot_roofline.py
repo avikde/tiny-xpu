@@ -58,17 +58,16 @@ def plot(series, out_path):
 
     # BW diagonals
     bw_hi = 64
-    # 64 B/cyc line: ridge at AI = 256/64 = 4 (visible), so clip at ridge
+    # 64 B/cyc line: thick solid black (matches horizontal compute ceiling)
     ridge_bw_hi = peak / bw_hi  # = 4.0
-    ax.loglog([0.1, ridge_bw_hi], [bw_hi * 0.1, bw_hi * ridge_bw_hi],
-              "-", color="black", linewidth=1.5, label=f"DRAM {bw_hi} B/cyc")
+    ax.loglog([0.4, ridge_bw_hi], [bw_hi * 0.4, bw_hi * ridge_bw_hi],
+              "-", color="black", linewidth=2, label=f"Mem {bw_hi} B/cyc")
 
-    # 16 B/cyc line: ridge off-screen, goes all the way to x_max
-    ax.loglog([0.1, x_max], [bw * 0.1, bw * x_max],
-              "-", color="#4CAF50", linewidth=2, label=f"DRAM {bw} B/cyc")
+    # 16 B/cyc line: dashed black (matches lower dashed ceiling)
+    ax.loglog([0.4, x_max], [bw * 0.4, bw * x_max],
+              "--", color="black", linewidth=1.5, label=f"Mem {bw} B/cyc")
 
     # Lower (dashed) ceiling at 64 MACs/cycle — ridge is visible at AI=4
-    ax.plot(ridge_lo, peak_lo, "o", color="black", markersize=5, zorder=4)
     ax.axhline(peak_lo, color="black", linewidth=1.5, linestyle="--",
                label=f"{peak_lo} MACs/cycle (8×8 ref)")
 
@@ -95,10 +94,10 @@ def plot(series, out_path):
     # ── Labels ─────────────────────────────────────────────────────────────────
     ax.set_xlabel("Arithmetic Intensity (MACs / byte)", fontsize=12)
     ax.set_ylabel("Performance (MACs / cycle)", fontsize=12)
-    ax.set_title(f"TinyXPU Roofline — {peak}-PE weight-stationary systolic array", fontsize=12)
-    ax.legend(fontsize=9, loc="upper left")
+    ax.set_title("TinyXPU Roofline 16x16-PE weight-stationary systolic array", fontsize=12)
+    ax.legend(fontsize=9, loc="lower right")
     ax.grid(True, which="both", alpha=0.25)
-    ax.set_xlim(0.1, x_max)
+    ax.set_xlim(0.4, x_max)
     ax.set_ylim(0.5, peak * 4)
 
     plt.tight_layout()
