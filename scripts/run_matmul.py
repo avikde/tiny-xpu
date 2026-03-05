@@ -27,7 +27,7 @@ def main() -> int:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.join(script_dir, "..")
 
-    model_path = os.path.join(script_dir, "matmul_integer_4x4.onnx")
+    model_path = os.path.join(script_dir, "matmul_integer_16x16.onnx")
     default_plugin = os.path.join(repo_root, "build", "onnx-plugin", "libtinyxpu_ep.so")
     plugin_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else default_plugin)
 
@@ -101,7 +101,7 @@ def main() -> int:
     ).astype(np.int32)
 
     rng = np.random.default_rng(42)
-    A = rng.integers(-64, 64, size=(512, 4), dtype=np.int8)
+    A = rng.integers(-64, 64, size=(512, 16), dtype=np.int8)
 
     expected = A.astype(np.int32) @ W_ref
 
@@ -147,7 +147,7 @@ def main() -> int:
     M_values = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
     peak_macs = None
     for m in M_values:
-        A_m = rng.integers(-64, 64, size=(m, 4), dtype=np.int8)
+        A_m = rng.integers(-64, 64, size=(m, 16), dtype=np.int8)
         session.run(None, {"X": A_m})
         p = tinyxpu_perf.get_last_perf(lib)
         o = p.obs

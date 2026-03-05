@@ -50,9 +50,7 @@ def make_matmul_graph(W_data):
 
 if __name__ == "__main__":
     rng = np.random.default_rng(42)
-    W1_data = rng.integers(1, 6, size=(16, 4), dtype=np.int8)
-    W2_data = rng.integers(1, 6, size=(8, 8), dtype=np.int8)
-    W3_data = rng.integers(1, 6, size=(4, 16), dtype=np.int8)
-    make_matmul_graph(W1_data)
-    make_matmul_graph(W2_data)
-    make_matmul_graph(W3_data)
+    make_matmul_graph(rng.integers(1, 6, size=(16, 4), dtype=np.int8))
+    make_matmul_graph(rng.integers(1, 6, size=(8, 8), dtype=np.int8))
+    make_matmul_graph(rng.integers(1, 6, size=(4, 16), dtype=np.int8))
+    make_matmul_graph(rng.integers(1, 6, size=(16, 16), dtype=np.int8))
