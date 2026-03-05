@@ -73,8 +73,8 @@ if(SIM)
         message(FATAL_ERROR "SIM=ON but Verilator not found. Install with: sudo apt install verilator")
     endif()
 
-    set(SIM_ROWS 4 CACHE STRING "Systolic array row count (overrides array.sv ROWS parameter)")
-    set(SIM_COLS 4 CACHE STRING "Systolic array column count (overrides array.sv COLS parameter)")
+    set(SIM_ROWS 16 CACHE STRING "Systolic array row count (overrides array.sv ROWS parameter)")
+    set(SIM_COLS 16 CACHE STRING "Systolic array column count (overrides array.sv COLS parameter)")
 
     verilate(tinyxpu_ep
         SOURCES

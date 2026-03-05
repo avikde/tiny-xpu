@@ -14,9 +14,9 @@ While there are other projects building up small (~2x2) TPU-inspired designs (se
 Set up in WSL or other Linux: 
 
 - `sudo apt install iverilog` -- Icarus Verilog for simulation
-- `sudo apt install yosys` -- Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
 - `sudo apt install verilator` -- Compile SV -> C++ for EP linkage
 - Install pre-built onnxruntime (check https://github.com/microsoft/onnxruntime/releases) -- this is used to build the ONNX EP C++ library
+- `sudo apt install yosys` -- (optional) Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
 
 ```bash
 sudo mkdir -p /opt/onnxruntime
@@ -47,7 +47,7 @@ Build:
 
 ```shell
 mkdir -p build && cd build
-cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DSIM=ON
+cmake .. -DSIM=ON
 make -j
 ```
 

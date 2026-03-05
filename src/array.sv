@@ -24,8 +24,8 @@
 // no source edits are needed to change the tile size.
 
 module array #(
-    parameter int ROWS       = 4,
-    parameter int COLS       = 4,
+    parameter int ROWS       = 16,
+    parameter int COLS       = 16,
     parameter int DATA_WIDTH = 8,
     parameter int ACC_WIDTH  = 32
 ) (
