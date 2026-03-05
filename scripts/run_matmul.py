@@ -11,23 +11,23 @@ Usage:
 If no path is given, defaults to build/onnx-plugin/libtinyxpu_ep.so relative
 to the repo root.
 """
+
 import ctypes
 import os
 import sys
 
 import numpy as np
 import onnx
-from onnx import numpy_helper
 import onnxruntime as ort
-
 import tinyxpu_perf
+from onnx import numpy_helper
 
 
 def main() -> int:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.join(script_dir, "..")
 
-    model_path = os.path.join(script_dir, "matmul_integer_4x4.onnx")
+    model_path = os.path.join(script_dir, "matmul_integer_16x16.onnx")
     default_plugin = os.path.join(repo_root, "build", "onnx-plugin", "libtinyxpu_ep.so")
     plugin_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else default_plugin)
 
@@ -101,7 +101,7 @@ def main() -> int:
     ).astype(np.int32)
 
     rng = np.random.default_rng(42)
-    A = rng.integers(-64, 64, size=(512, 4), dtype=np.int8)
+    A = rng.integers(-64, 64, size=(512, 16), dtype=np.int8)
 
     expected = A.astype(np.int32) @ W_ref
 
@@ -131,6 +131,34 @@ def main() -> int:
         print("FAIL: output mismatch!")
         print("Diff:")
         print(Y - expected)
+
+    # =========================================================================
+    # Sweep M: show how weight-load amortization improves with batch size
+    # =========================================================================
+    # MAC efficiency = PE utilization = M/(M+ROWS+COLS-2); both reduce to the same ratio.
+    print("\n--- Weight-load amortization sweep (MAC eff = PE utilization) ---")
+    # ridge BW = peak_compute / ai_systolic: DRAM bandwidth needed to be compute-bound.
+    # Values below the ridge are memory-bound; above are compute-bound.
+    print(
+        f"{'M':>6}  {'ticks':>6}  {'PE util':>8}  {'AI (MAC/B)':>11}  {'wt reuse':>9}  {'overhead':>9}  {'ridge B/cyc':>12}"
+    )
+    print("-" * 77)
+
+    M_values = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    peak_macs = None
+    for m in M_values:
+        A_m = rng.integers(-64, 64, size=(m, 16), dtype=np.int8)
+        session.run(None, {"X": A_m})
+        p = tinyxpu_perf.get_last_perf(lib)
+        o = p.obs
+        peak_macs = o.hw_rows * o.hw_cols
+        ridge_bw = peak_macs / p.ai_systolic if p.ai_systolic else float("inf")
+        print(
+            f"{m:>6}  {o.ticks_streaming:>6}  {p.mac_efficiency * 100:>7.1f}%"
+            f"  {p.ai_systolic:>10.3f}  {o.M:>6}x  {p.overhead_frac * 100:>8.1f}%  {ridge_bw:>11.1f}"
+        )
+    if peak_macs is not None:
+        print(f"\n  Peak compute = {peak_macs} MACs/cycle; memory-bound when DRAM BW < ridge B/cyc")
 
     del session
     ort.unregister_execution_provider_library("SampleEP")

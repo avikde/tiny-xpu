@@ -382,7 +382,8 @@ OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(
                 }
             }
             if (!inputs_ok) continue;
-            printf("  [TinyXPU EP] Claiming op: MatMulInteger (int8, 4x4 systolic array)\n");
+            printf("  [TinyXPU EP] Claiming op: MatMulInteger (int8, %dx%d systolic array)\n",
+                   TINYXPU_ARRAY_ROWS, TINYXPU_ARRAY_COLS);
 #else
             printf("  [TinyXPU EP] Claiming op: MatMul (CPU float32 fallback)\n");
 #endif
@@ -624,9 +625,9 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     constexpr int HW_ROWS = TINYXPU_ARRAY_ROWS;
     constexpr int HW_COLS = TINYXPU_ARRAY_COLS;
 
-    if (K != HW_ROWS || N != HW_COLS)
+    if (K > HW_ROWS || N > HW_COLS)
         return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
-            "TinyXPU: MatMulInteger requires K==ROWS==4 and N==COLS==4");
+            "TinyXPU: MatMulInteger requires K<=HW_ROWS and N<=HW_COLS");
 
     const int8_t* A_i8 = static_cast<const int8_t*>(A_raw);
     const int8_t* B_i8 = static_cast<const int8_t*>(B_raw);
@@ -667,30 +668,60 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         arr.rst_n = 1;
         tick();  // post-reset settle (not tagged as reset or streaming)
 
-        // Load weight matrix B (K×N = ROWS×COLS): mirrors load_weights()
+        // Load weight matrix B, zero-padded to HW_ROWS×HW_COLS.
+        // Real data occupies the top-left K×N block; remaining PEs receive 0.
         arr.weight_ld = 1;
         for (int r = 0; r < HW_ROWS; ++r)
             for (int c = 0; c < HW_COLS; ++c) {
-                arr.weight_in[r * HW_COLS + c] = static_cast<uint8_t>(B_i8[r * N + c]);
-                obs.weight_writes++;        // one int8 element written to a PE register
+                int8_t w = (r < K && c < N) ? B_i8[r * N + c] : 0;
+                arr.weight_in[r * HW_COLS + c] = static_cast<uint8_t>(w);
+                if (r < K && c < N) obs.weight_writes++;  // only real data bytes
             }
         tick(); obs.ticks_weight_load++;    // rising edge latches weights
         arr.weight_ld = 0;
         tick(); obs.ticks_weight_load++;    // settle
 
-        // Stream each output row of A through the array: mirrors stream_row()
+        // Stream all M rows back-to-back (one tick each), then drain.
+        //
+        // Hardware input skewing delays row r by r cycles internally, so all K
+        // elements of output row i arrive at their respective PE column-0 at the
+        // same effective cycle.  Hardware output de-skewing aligns all COLS
+        // acc_out signals so they are valid simultaneously.
+        //
+        // Output row i is valid at tick i + (HW_ROWS + HW_COLS - 2) (0-based).
+        // Reading is interleaved with draining: at each tick t we collect output
+        // row t - (HW_ROWS + HW_COLS - 2) when that index is in [0, M).
+        //
+        // Total ticks = M + (HW_ROWS + HW_COLS - 2).
+        // MAC efficiency → M / (M + HW_ROWS + HW_COLS - 2) ≈ 1 for large M.
+        const int64_t PIPELINE_LAT = HW_ROWS + HW_COLS - 2;
+        const int64_t total_ticks  = M + PIPELINE_LAT;
+
         arr.en = 1;
-        for (int64_t i = 0; i < M; ++i) {
-            for (int k = 0; k < HW_ROWS; ++k) {
-                arr.data_in[k] = static_cast<uint8_t>(A_i8[i * K + k]);
-                obs.activation_writes++;    // one int8 element written to data_in
+        for (int64_t t = 0; t < total_ticks; ++t) {
+            if (t < M) {
+                for (int k = 0; k < HW_ROWS; ++k) {
+                    // Zero-pad A rows from K to HW_ROWS elements
+                    int8_t a = (k < K) ? A_i8[t * K + k] : 0;
+                    arr.data_in[k] = static_cast<uint8_t>(a);
+                    if (k < K) obs.activation_writes++;  // only real data bytes
+                }
+            } else {
+                for (int k = 0; k < HW_ROWS; ++k) arr.data_in[k] = 0;
             }
-            for (int t = 0; t < HW_ROWS + HW_COLS; ++t) {
-                tick(); obs.ticks_streaming++;
-            }
-            for (int j = 0; j < HW_COLS; ++j) {
-                C_i32[i * N + j] = static_cast<int32_t>(arr.acc_out[j]);
-                obs.output_reads++;         // one int32 element read from acc_out
+
+            tick(); obs.ticks_streaming++;
+
+            // Collect output row (out_row = t - PIPELINE_LAT) when it becomes valid.
+            // Only the first N columns carry real results; padded columns are discarded.
+            const int64_t out_row = t - PIPELINE_LAT;
+            if (out_row >= 0 && out_row < M) {
+                for (int j = 0; j < HW_COLS; ++j) {
+                    if (j < N) {
+                        C_i32[out_row * N + j] = static_cast<int32_t>(arr.acc_out[j]);
+                        obs.output_reads++;     // one int32 element read from acc_out
+                    }
+                }
             }
         }
     } // guard calls arr.final() here

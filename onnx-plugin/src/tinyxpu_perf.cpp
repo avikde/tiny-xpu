@@ -28,7 +28,7 @@ TinyXpuPerfCounters TinyXpuPerfCounters::from_observations(const SimObservations
     c.total_mem_bytes  = c.weight_bytes + c.activation_bytes + c.output_bytes;
 
     c.ai_systolic = (c.total_mem_bytes > 0)
-                  ? (double)c.hw_mac_events / c.total_mem_bytes : 0.0;
+                  ? (double)c.useful_mac_ops / c.total_mem_bytes : 0.0;
 
     // Scalar no-cache baseline (analytical — nothing to observe for a loop
     // that doesn't exist, but useful for the comparison).

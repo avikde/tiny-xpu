@@ -7,15 +7,14 @@ option(BUILD_TEST_APP "Build the test application" ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ============================================================================
 # Find ONNX Runtime
 # ============================================================================
 
-# set(ONNXRUNTIME_INCLUDE_DIR "/opt/onnxruntime/include")
-# set(ONNXRUNTIME_LIB_DIR "/opt/onnxruntime/lib")
-set(ONNXRUNTIME_INCLUDE_DIR "$ENV{HOME}/onnxruntime_install/include/onnxruntime")
-set(ONNXRUNTIME_LIB_DIR "$ENV{HOME}/onnxruntime_install/lib")
+set(ONNXRUNTIME_INCLUDE_DIR "/opt/onnxruntime/include")
+set(ONNXRUNTIME_LIB_DIR "/opt/onnxruntime/lib")
 
 message(STATUS "ONNX Runtime include dir: ${ONNXRUNTIME_INCLUDE_DIR}")
 message(STATUS "ONNX Runtime lib dir: ${ONNXRUNTIME_LIB_DIR}")
@@ -74,8 +73,8 @@ if(SIM)
         message(FATAL_ERROR "SIM=ON but Verilator not found. Install with: sudo apt install verilator")
     endif()
 
-    set(SIM_ROWS 4 CACHE STRING "Systolic array row count (overrides array.sv ROWS parameter)")
-    set(SIM_COLS 4 CACHE STRING "Systolic array column count (overrides array.sv COLS parameter)")
+    set(SIM_ROWS 16 CACHE STRING "Systolic array row count (overrides array.sv ROWS parameter)")
+    set(SIM_COLS 16 CACHE STRING "Systolic array column count (overrides array.sv COLS parameter)")
 
     verilate(tinyxpu_ep
         SOURCES

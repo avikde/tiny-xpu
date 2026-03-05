@@ -20,44 +20,37 @@ import onnx
 from onnx import helper, TensorProto
 from onnx import numpy_helper
 
-# Weight matrix W (K=4 x N=4), int8.
-# Kept small to avoid int8 overflow in the reference check.
-W_data = np.array([
-    [1, 0, 0, 0],
-    [0, 2, 0, 0],
-    [0, 0, 3, 0],
-    [0, 0, 0, 4],
-], dtype=np.int8)
+def make_matmul_graph(W_data):
+    X = helper.make_tensor_value_info("X", TensorProto.INT8, [None, W_data.shape[0]])
+    Y = helper.make_tensor_value_info("Y", TensorProto.INT32, [None, W_data.shape[1]])
+    W_init = numpy_helper.from_array(W_data, name="W")
+    node = helper.make_node("MatMulInteger", inputs=["X", "W"], outputs=["Y"])
+    graph = helper.make_graph(
+        [node],
+        "MatMulInteger_4x4",
+        [X],
+        [Y],
+        initializer=[W_init],
+    )
 
-# Graph inputs / outputs
-X = helper.make_tensor_value_info("X", TensorProto.INT8, [None, 4])
-Y = helper.make_tensor_value_info("Y", TensorProto.INT32, [None, 4])
+    model = helper.make_model(
+        graph,
+        opset_imports=[helper.make_opsetid("", 21)],
+        producer_name="tiny-xpu",
+    )
+    model.ir_version = 10
 
-# Bake W in as a graph initializer
-W_init = numpy_helper.from_array(W_data, name="W")
+    onnx.checker.check_model(model)
+    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"matmul_integer_{W_data.shape[0]}x{W_data.shape[1]}.onnx")
+    onnx.save(model, out_path)
+    print(f"Model saved to {out_path}")
+    print(f"  Input X : int8  [M, {W_data.shape[0]}]  (M is runtime batch size)")
+    print(f"  Weight W: int8  [{W_data.shape[0]}, {W_data.shape[1]}]  (baked in)")
+    print(f"  Output Y: int32 [M, {W_data.shape[1]}]")
 
-node = helper.make_node("MatMulInteger", inputs=["X", "W"], outputs=["Y"])
-
-graph = helper.make_graph(
-    [node],
-    "MatMulInteger_4x4",
-    [X],
-    [Y],
-    initializer=[W_init],
-)
-
-model = helper.make_model(
-    graph,
-    opset_imports=[helper.make_opsetid("", 21)],
-    producer_name="tiny-xpu",
-)
-model.ir_version = 10
-
-onnx.checker.check_model(model)
-
-out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "matmul_integer_4x4.onnx")
-onnx.save(model, out_path)
-print(f"Model saved to {out_path}")
-print(f"  Input X : int8  [M, 4]  (M is runtime batch size)")
-print(f"  Weight W: int8  [4, 4]  (baked in)")
-print(f"  Output Y: int32 [M, 4]")
+if __name__ == "__main__":
+    rng = np.random.default_rng(42)
+    make_matmul_graph(rng.integers(1, 6, size=(16, 4), dtype=np.int8))
+    make_matmul_graph(rng.integers(1, 6, size=(8, 8), dtype=np.int8))
+    make_matmul_graph(rng.integers(1, 6, size=(4, 16), dtype=np.int8))
+    make_matmul_graph(rng.integers(1, 6, size=(16, 16), dtype=np.int8))

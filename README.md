@@ -6,6 +6,7 @@ While there are other projects building up small (~2x2) TPU-inspired designs (se
 
 - Modular SystemVerilog setup to support non-rectangular systolic architectures
 - Easy software interface via ONNX EP and maybe others
+- Scaffolding to evaluate architectural tradeoffs, include performance counters
 - Support for FPGA deployment
 
 ## Setup, build, and test
@@ -13,9 +14,23 @@ While there are other projects building up small (~2x2) TPU-inspired designs (se
 Set up in WSL or other Linux: 
 
 - `sudo apt install iverilog` -- Icarus Verilog for simulation
-- Install the [Surfer waveform viewer](https://marketplace.visualstudio.com/items?itemName=surfer-project.surfer) VSCode extension for viewing `.vcd` waveform files
-- `sudo apt install yosys` -- Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
 - `sudo apt install verilator` -- Compile SV -> C++ for EP linkage
+- Install pre-built onnxruntime (check https://github.com/microsoft/onnxruntime/releases) -- this is used to build the ONNX EP C++ library
+- `sudo apt install yosys` -- (optional) Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
+
+```bash
+sudo mkdir -p /opt/onnxruntime
+cd /tmp
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.24.2/onnxruntime-linux-x64-1.24.2.tgz
+sudo tar -xzf onnxruntime-linux-x64-1.24.2.tgz -C /opt/onnxruntime --strip-components=1
+```
+
+- Add the ONNX Runtime library to your library path:
+
+```bash
+echo 'export LD_LIBRARY_PATH=/opt/onnxruntime/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+```
 
 Set up a venv for python packages
 
@@ -24,22 +39,24 @@ python3 -m venv .venv
 source .venv/bin/activate
 # Python tool for more powerful SystemVerilog testing
 pip install cocotb
-# Run ONNX models
-pip install onnxruntime==1.23.2 onnx
+# Run ONNX models (matching onnxruntime version to the downloaded release)
+pip install onnxruntime==1.24.2 onnx
 ```
 
 Build:
 
 ```shell
 mkdir -p build && cd build
-cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DSIM=ON
+cmake .. -DSIM=ON
 make -j
 ```
 
 Important flags:
 - `-DSIM=ON` - link Verilator into the ONNX EP so that it executes verilator simulation. When off, it will attempt to use hardware when implemented.
 
-Test (optional):
+### Test and view waveforms (optional)
+
+- Install the [Surfer waveform viewer](https://marketplace.visualstudio.com/items?itemName=surfer-project.surfer) VSCode extension for viewing `.vcd` waveform files
 
 ```shell
 cd build && ctest --verbose
@@ -47,35 +64,7 @@ cd build && ctest --verbose
 
 Tests produce waveform files (`*.fst`) in `test/sim_build/`. Open them in VSCode with the Surfer extension to inspect signals.
 
-## Running ONNX models
-
-### 1. Build onnxruntime from source (Linux / WSL)
-
-```bash
-git clone --recursive https://github.com/Microsoft/onnxruntime.git
-cd onnxruntime
-git checkout v1.23.2
-# Build, skipping tests
-./build.sh --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --skip_submodule_sync --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
-cmake --install build/Linux/RelWithDebInfo --prefix $HOME/onnxruntime_install
-```
-
-### 2. Configure Library Path
-
-Add the ONNX Runtime library to your library path:
-
-```bash
-echo 'export LD_LIBRARY_PATH=$HOME/onnxruntime_install/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-source ~/.bashrc
-```
-
-### 3. Install ONNX
-
-```sh
-pip install onnx
-```
-
-### 4. Run the matmul ONNX model with tiny-xpu
+## Run the matmul ONNX model with tiny-xpu
 
 The end-to-end flow is: generate an ONNX model → run it through `onnxruntime`
 with the TinyXPU execution provider, which dispatches `MatMulInteger` to the
@@ -112,8 +101,16 @@ development harness.
 
 ## Systolic array implementation
 
-Kung paper
-- Network of PE's
+The systolic array is a `ROWS × COLS` grid of processing elements (PEs) connected in a mesh. Each PE performs one multiply-accumulate per cycle. The array size is set by `ROWS` and `COLS` parameters, overridable at elaboration time (e.g. via Verilator's `-GROWS=N -GCOLS=N`).
+
+Current dataflow is **weight-stationary**: weights are loaded once into the PE grid, then activations stream east (→) through each row while partial sums cascade south (↓) through each column, accumulating as they go. This maximises weight reuse — each weight participates in every row of the output tile without being reloaded.
+
+Input and output ports of `array.sv`:
+- `data_in[ROWS]` — one int8 activation per row, presented sequentially (one output row per streaming cycle); internal skew registers stagger them automatically
+- `weight_in[ROWS*COLS]`, `weight_ld` — load all PE weights in one cycle before streaming begins
+- `acc_out[COLS]` — one int32 result per column, de-skewed so all columns are valid at the same cycle
+
+> **Note on configurable dataflow:** It is feasible to add a `DATAFLOW` parameter (weight-stationary vs output-stationary) switchable via a CMake option that passes `-GDATAFLOW=0/1` to Verilator. However, the two modes differ enough in their weight-loading interface (`weight_in[ROWS*COLS]` broadcast vs `weight_in[COLS]` streaming) that a clean unified port is awkward in SV. The most practical approach would be separate `array_ws.sv` / `array_os.sv` files, selected by the CMake `ARRAY_DATAFLOW` option, sharing a common `pe.sv` modified with a `generate if` for the accumulation logic.
 
 ### PE (`pe.sv`)
 
@@ -153,9 +150,21 @@ acc_in ──►          ├──► acc_out
          └──────────┘
 ```
 
-### Networked PE's -> Systolic array
+### Input skewing
 
-- Multiple PE's connected together form a systolic array
+The standard way to fully utilize a weight-stationary systolic array is **input skewing**: PE row `k` receives its activation one cycle later than PE row `k-1`. For a 4×4 array computing `C = A × B` with M output rows, the driver presents:
+
+```
+Cycle:   0      1      2      3      4     ...   M+2
+Row 0: a00    a10    a20    a30    ...
+Row 1:  0     a01    a11    a21    a31    ...
+Row 2:  0      0     a02    a12    a22    ...
+Row 3:  0      0      0     a03    a13    ...
+```
+
+With skewing, M output rows flow through the pipeline in `M + (ROWS+COLS−1)` total streaming ticks instead of `M × (ROWS+COLS)`, so MAC efficiency approaches 100% as M grows (weight reuse AND compute utilisation both improve). Without skewing the current driver pays the full pipeline fill/drain cost per row, capping MAC efficiency at 12.5% regardless of M.
+
+The skewed input stream must be de-skewed on the output side: `acc_out[j]` for output row `i` is valid at tick `i + ROWS + j`, not all at the same tick.
 
 ## Related projects
 
@@ -163,4 +172,3 @@ There are a number of "tiny TPU"-type projects, due to the current popularity of
 
 - [tiny-tpu-v2/tiny-tpu](https://github.com/tiny-tpu-v2/tiny-tpu/tree/main) - 2x2 matmul + ReLU to solve XOR problem
 - [Alanma23/tinytinyTPU](https://github.com/Alanma23/tinytinyTPU) - 2x2 matmul + ReLU / ReLU6
-
