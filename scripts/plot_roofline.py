@@ -1,9 +1,14 @@
 """
 Roofline plot for the TinyXPU systolic array.
 
-Sweeps M (batch rows) and plots each operating point on a standard roofline
-diagram: arithmetic intensity (MAC/B) vs. performance (MACs/cycle), against
-the compute ceiling and memory-bandwidth rooflines.
+Sweeps M (batch rows) across three weight shapes (4×16, 8×8, 16×4) and plots
+each operating point on a standard roofline diagram: arithmetic intensity
+(MAC/B) vs. performance (MACs/cycle), against the compute ceiling and
+memory-bandwidth roofline.
+
+All three weight shapes have 64 elements (K×N = 64), so they share the same
+SRAM weight-load cost. The AI differences arise from K:N ratio effects on
+activation reads (M×K bytes) and output writes (M×N×4 bytes).
 
 Usage:
     pip install matplotlib
@@ -22,71 +27,78 @@ import onnxruntime as ort
 import tinyxpu_perf
 
 
-def _collect(session, lib, rng, M_values):
+def _collect(session, lib, rng, M_values, K):
     rows = []
     for m in M_values:
-        A = rng.integers(-64, 64, size=(m, 4), dtype=np.int8)
+        A = rng.integers(-64, 64, size=(m, K), dtype=np.int8)
         session.run(None, {"X": A})
         p = tinyxpu_perf.get_last_perf(lib)
         o = p.obs
         perf = p.useful_mac_ops / o.ticks_streaming if o.ticks_streaming else 0.0
-        rows.append((m, p.ai_systolic, perf, o.hw_rows * o.hw_cols, p.ai_scalar))
-    return rows  # [(M, ai_systolic, macs_per_cycle, peak_compute, ai_scalar), ...]
+        rows.append((m, p.ai_systolic, perf, o.hw_rows * o.hw_cols))
+    return rows  # [(M, ai_systolic, macs_per_cycle, peak_compute), ...]
 
 
-def plot(rows, out_path):
-    peak = rows[0][3]  # MACs/cycle (constant across rows)
-    ai_scalar = rows[0][4]  # constant across M (no weight reuse in scalar loop)
+def plot(series, out_path):
+    """
+    series: list of (label, color, rows) where rows is from _collect().
+    """
+    peak = series[0][2][0][3]  # hw_rows * hw_cols — same for all series
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(6, 4))
 
-    # ── Rooflines ──────────────────────────────────────────────────────────────
+    # ── Roofline ───────────────────────────────────────────────────────────────
     bw = 16
-    ridge_ai = peak / bw  # AI where bandwidth line meets compute ceiling
-    ai_range = np.logspace(-2, 2, 1000)
+    x_max = 10
 
-    # Diagonal bandwidth line (memory-bound region only, up to ridge point)
-    bw_ai = ai_range[ai_range <= ridge_ai]
-    ax.loglog(bw_ai, bw * bw_ai, "-", color="#4CAF50", linewidth=2,
-              label=f"BW = {bw} B/cyc (typical DRAM)")
-    ax.plot(ridge_ai, peak, "o", color="#4CAF50", markersize=6, zorder=4)
+    # Two compute ceilings: the actual 16×16 array and a smaller 8×8 reference.
+    peak_lo = 64   # 8×8 reference ceiling
+    ridge_lo = peak_lo / bw   # = 4.0  (visible on plot)
+    ridge_hi = peak / bw      # = 16.0 (off-screen)
 
-    # Horizontal compute ceiling (compute-bound region only, from ridge point rightward)
-    ax.plot([ridge_ai, 10], [peak, peak], "-", color="red", linewidth=2,
-            label=f"Compute ceiling ({peak} MACs/cycle)")
+    # BW diagonals
+    bw_hi = 64
+    # 64 B/cyc line: ridge at AI = 256/64 = 4 (visible), so clip at ridge
+    ridge_bw_hi = peak / bw_hi  # = 4.0
+    ax.loglog([0.1, ridge_bw_hi], [bw_hi * 0.1, bw_hi * ridge_bw_hi],
+              "-", color="black", linewidth=1.5, label=f"DRAM {bw_hi} B/cyc")
 
-    # ── Operating points ───────────────────────────────────────────────────────
-    ais = [r[1] for r in rows]
-    perfs = [r[2] for r in rows]
-    ms = [r[0] for r in rows]
+    # 16 B/cyc line: ridge off-screen, goes all the way to x_max
+    ax.loglog([0.1, x_max], [bw * 0.1, bw * x_max],
+              "-", color="#4CAF50", linewidth=2, label=f"DRAM {bw} B/cyc")
 
-    ax.scatter(ais, perfs, color="black", zorder=5, s=45)
-    for ai, perf, m in zip(ais, perfs, ms):
-        ax.annotate(
-            f"M={m}",
-            (ai, perf),
-            textcoords="offset points",
-            xytext=(5, 3),
-            fontsize=8,
-            color="black",
-        )
+    # Lower (dashed) ceiling at 64 MACs/cycle — ridge is visible at AI=4
+    ax.plot(ridge_lo, peak_lo, "o", color="black", markersize=5, zorder=4)
+    ax.axhline(peak_lo, color="black", linewidth=1.5, linestyle="--",
+               label=f"{peak_lo} MACs/cycle (8×8 ref)")
 
-    # ── Scalar baseline AI ─────────────────────────────────────────────────────
-    # ai_scalar is constant (no weight reuse): every A and B element is re-read
-    # for every output, so AI = K / (2K + 4) ≈ 0.33 regardless of M.
-    # Shown as a vertical line — no measured performance, just the X position.
-    ax.axvline(
-        ai_scalar, color="purple", linewidth=1.5, linestyle=":",
-        label=f"Scalar no-cache AI = {ai_scalar:.2f} MAC/B",
-    )
+    # Upper (solid) ceiling at peak MACs/cycle — ridge off-screen
+    ax.axhline(peak, color="black", linewidth=2,
+               label=f"{peak} MACs/cycle (16×16)")
+
+    # ── Operating points per weight shape ──────────────────────────────────────
+    markers = ["o", "s", "^", "D"]
+    for (label, color, rows), marker in zip(series, markers):
+        ais  = [r[1] for r in rows]
+        perfs = [r[2] for r in rows]
+        ms   = [r[0] for r in rows]
+
+        ax.plot(ais, perfs, "-", color=color, linewidth=1.2, alpha=0.6)
+        ax.scatter(ais, perfs, color=color, marker=marker, zorder=5, s=50,
+                   label=f"W shape {label}")
+        # Annotate only the first and last M to avoid clutter
+        for idx in (0, -1):
+            ax.annotate(f"M={ms[idx]}", (ais[idx], perfs[idx]),
+                        textcoords="offset points", xytext=(5, 3),
+                        fontsize=7, color=color)
 
     # ── Labels ─────────────────────────────────────────────────────────────────
     ax.set_xlabel("Arithmetic Intensity (MACs / byte)", fontsize=12)
     ax.set_ylabel("Performance (MACs / cycle)", fontsize=12)
-    ax.set_title("TinyXPU Roofline — 4×4 weight-stationary systolic array", fontsize=12)
+    ax.set_title(f"TinyXPU Roofline — {peak}-PE weight-stationary systolic array", fontsize=12)
     ax.legend(fontsize=9, loc="upper left")
     ax.grid(True, which="both", alpha=0.25)
-    ax.set_xlim(0.1, 10)
+    ax.set_xlim(0.1, x_max)
     ax.set_ylim(0.5, peak * 4)
 
     plt.tight_layout()
@@ -98,14 +110,20 @@ def main() -> int:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.join(script_dir, "..")
 
-    model_path = os.path.join(script_dir, "matmul_integer_4x4.onnx")
     default_so = os.path.join(repo_root, "build", "onnx-plugin", "libtinyxpu_ep.so")
     plugin_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else default_so)
 
-    for path, name in [(model_path, "model"), (plugin_path, "plugin")]:
-        if not os.path.exists(path):
-            print(f"ERROR: {name} not found: {path}")
-            return 1
+    if not os.path.exists(plugin_path):
+        print(f"ERROR: plugin not found: {plugin_path}")
+        return 1
+
+    # (display label, plot color, model filename, K = cols of A = rows of B)
+    model_configs = [
+        ("4×16",   "#2196F3", "matmul_integer_4x16.onnx",  4),
+        ("8×8",    "#FF9800", "matmul_integer_8x8.onnx",   8),
+        ("16×4",   "#9C27B0", "matmul_integer_16x4.onnx", 16),
+        ("16×16",  "#E53935", "matmul_integer_16x16.onnx", 16),
+    ]
 
     ort.register_execution_provider_library("SampleEP", plugin_path)
     devices = [d for d in ort.get_ep_devices() if "SampleEP" in d.ep_name]
@@ -118,18 +136,26 @@ def main() -> int:
     lib = ctypes.CDLL(plugin_path)
     tinyxpu_perf.bind(lib)
 
-    sys.stdout.flush()
-    session = ort.InferenceSession(model_path, sess_options=opts)
-
     rng = np.random.default_rng(42)
-    M_values = [1, 2, 4, 8, 16, 32, 64]
-    rows = _collect(session, lib, rng, M_values)
+    M_values = [1, 2, 4, 8, 16, 32, 64, 128, 256]
 
-    del session
+    series = []
+    for label, color, model_file, K in model_configs:
+        model_path = os.path.join(script_dir, model_file)
+        if not os.path.exists(model_path):
+            print(f"ERROR: model not found: {model_path}")
+            return 1
+
+        sys.stdout.flush()
+        session = ort.InferenceSession(model_path, sess_options=opts)
+        rows = _collect(session, lib, rng, M_values, K)
+        del session
+        series.append((label, color, rows))
+
     ort.unregister_execution_provider_library("SampleEP")
 
     out_path = os.path.join(script_dir, "roofline.png")
-    plot(rows, out_path)
+    plot(series, out_path)
     return 0
 
 
