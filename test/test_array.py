@@ -2,15 +2,15 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import numpy as np
 import cocotb
+import numpy as np
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, ClockCycles
+from cocotb.triggers import ClockCycles, RisingEdge
 
 # Must match the ROWS/COLS parameters the DUT is elaborated with.
 # The runner at the bottom passes -Parray.ROWS=ROWS etc. to iverilog.
-ROWS = 4
-COLS = 4
+ROWS = 16
+COLS = 16
 
 # Pipeline latency from the testbench's perspective: the number of clock edges
 # to wait after presenting streaming cycle i before acc_out reflects row i.
@@ -88,6 +88,7 @@ async def stream_and_collect(dut, A):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 @cocotb.test()
 async def test_reset(dut):
     """After reset all outputs should be zero."""
@@ -97,11 +98,13 @@ async def test_reset(dut):
     await reset_dut(dut)
 
     for r in range(ROWS):
-        assert dut.data_out[r].value.to_signed() == 0, \
+        assert dut.data_out[r].value.to_signed() == 0, (
             f"data_out[{r}] not zero after reset"
+        )
     for c in range(COLS):
-        assert dut.acc_out[c].value.to_signed() == 0, \
+        assert dut.acc_out[c].value.to_signed() == 0, (
             f"acc_out[{c}] not zero after reset"
+        )
 
 
 @cocotb.test()
@@ -115,12 +118,9 @@ async def test_matmul_identity(dut):
     I = [[1 if r == c else 0 for c in range(COLS)] for r in range(ROWS)]
     await load_weights(dut, I)
 
-    A = [
-        [1,  2,  3,  4],
-        [5,  6,  7,  8],
-        [9,  10, 11, 12],
-        [13, 14, 15, 16],
-    ]
+    rng = np.random.default_rng(42)
+
+    A = rng.integers(1, 6, size=(16, ROWS), dtype=np.int8)
 
     dut.en.value = 1
     results = await stream_and_collect(dut, A)
@@ -133,10 +133,10 @@ async def test_matmul_identity(dut):
 
 
 @cocotb.test()
-async def test_matmul_4x4(dut):
-    """Full 4×4 integer matrix multiply, verified against numpy.
+async def test_matmul(dut):
+    """Full integer matrix multiply, verified against numpy.
 
-    Computes C = A × B where A is M×K (M=4, K=ROWS) and B is K×N (N=COLS).
+    Computes C = A × B where A is M×K (M=ROWS, K=ROWS) and B is K×N (N=COLS).
     data_in[k] carries the k-th element of each input row; the module
     applies input skewing internally.  acc_out[j] returns C[i][j] for all j
     simultaneously after the de-skew pipeline.
@@ -148,9 +148,9 @@ async def test_matmul_4x4(dut):
 
     rng = np.random.default_rng(42)
     # Small positive int8 values: products ≤ 5×5=25, column sum ≤ 4×25=100 → fits int32 easily
-    A = rng.integers(1, 6, size=(4, ROWS), dtype=np.int8)   # shape M×K
+    A = rng.integers(1, 6, size=(ROWS, ROWS), dtype=np.int8)  # shape M×K
     B = rng.integers(1, 6, size=(ROWS, COLS), dtype=np.int8)  # shape K×N
-    C_expected = A.astype(np.int32) @ B.astype(np.int32)      # shape M×N
+    C_expected = A.astype(np.int32) @ B.astype(np.int32)  # shape M×N
 
     await load_weights(dut, B)
 
@@ -168,6 +168,7 @@ async def test_matmul_4x4(dut):
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
+
 
 def run_tests():
     """Build and run all cocotb tests using the cocotb runner API."""
