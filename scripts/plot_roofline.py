@@ -58,22 +58,22 @@ def plot(series, out_path):
 
     # BW diagonals
     bw_hi = 64
-    # 64 B/cyc line: thick solid black (matches horizontal compute ceiling)
+    # 64 B/cyc line: thick solid gray (matches horizontal compute ceiling)
     ridge_bw_hi = peak / bw_hi  # = 4.0
     ax.loglog([0.4, ridge_bw_hi], [bw_hi * 0.4, bw_hi * ridge_bw_hi],
-              "-", color="black", linewidth=2, label=f"Mem {bw_hi} B/cyc")
+              "-", color="gray", linewidth=2, label=f"Mem {bw_hi} B/cyc")
 
-    # 16 B/cyc line: dashed black (matches lower dashed ceiling)
+    # 16 B/cyc line: dashed gray (matches lower dashed ceiling)
     ax.loglog([0.4, x_max], [bw * 0.4, bw * x_max],
-              "--", color="black", linewidth=1.5, label=f"Mem {bw} B/cyc")
-
-    # Lower (dashed) ceiling at 64 MACs/cycle — ridge is visible at AI=4
-    ax.axhline(peak_lo, color="black", linewidth=1.5, linestyle="--",
-               label=f"{peak_lo} MACs/cycle (8×8 ref)")
+              "--", color="gray", linewidth=1.5, label=f"Mem {bw} B/cyc")
 
     # Upper (solid) ceiling at peak MACs/cycle — ridge off-screen
     ax.axhline(peak, color="black", linewidth=2,
                label=f"{peak} MACs/cycle (16×16)")
+
+    # Lower (dashed) ceiling at 64 MACs/cycle — ridge is visible at AI=4
+    ax.axhline(peak_lo, color="black", linewidth=1.5, linestyle="--",
+               label=f"{peak_lo} MACs/cycle (8×8 ref)")
 
     # ── Operating points per weight shape ──────────────────────────────────────
     markers = ["o", "s", "^", "D"]
