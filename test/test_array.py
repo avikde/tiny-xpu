@@ -12,14 +12,6 @@ from cocotb.triggers import ClockCycles, RisingEdge
 ROWS = 16
 COLS = 16
 
-# Pipeline latency from the testbench's perspective: the number of clock edges
-# to wait after presenting streaming cycle i before acc_out reflects row i.
-# Hardware computes the result at tick i + ROWS + COLS - 1, but cocotb reads
-# signal values before the current posedge's non-blocking assignments commit,
-# so one additional edge is needed to observe the result → ROWS + COLS total.
-PIPELINE_LAT = ROWS + COLS
-
-
 async def reset_dut(dut):
     """Apply active-low reset for a few cycles."""
     dut.rst_n.value = 0
@@ -48,38 +40,34 @@ async def load_weights(dut, B):
 async def stream_and_collect(dut, A):
     """Stream M rows of activations and collect M rows of outputs.
 
-    With hardware input skewing and output de-skewing, the driver simply
-    presents row i of A on data_in[*] at streaming cycle i.  The module
-    delays each row internally and aligns acc_out[*] so that all columns
-    for output row i are valid simultaneously at cycle i + ROWS + COLS - 1.
+    No hardware de-skew: column j of output row i is valid at hardware cycle
+    i + ROWS + j (1-indexed).  cocotb reads values after the NBA commit, so
+    one additional edge is needed → readable after edge i + ROWS + j + 1.
 
-    Total latency: M + max(0, ROWS + COLS - 1 - M) = ROWS + COLS - 1 cycles
-    from the first drive until the first output is read.
+    The loop runs for M + ROWS + COLS - 1 edges total, driving inputs for
+    the first M edges and collecting each (row, col) pair as it becomes valid.
     """
     M = len(A)
+    results = [[0] * COLS for _ in range(M)]
 
-    # Stream all M input rows, one per clock cycle
-    for i in range(M):
-        for r in range(ROWS):
-            dut.data_in[r].value = int(A[i][r])
+    # t is 1-indexed edge count; total edges covers the last output (row M-1, col COLS-1)
+    total_edges = M + ROWS + COLS - 1
+    for t in range(1, total_edges + 1):
+        # Drive row t-1 (or zeros once all input rows have been sent)
+        if t <= M:
+            for r in range(ROWS):
+                dut.data_in[r].value = int(A[t - 1][r])
+        else:
+            for r in range(ROWS):
+                dut.data_in[r].value = 0
+
         await RisingEdge(dut.clk)
 
-    # Zero inputs after streaming
-    for r in range(ROWS):
-        dut.data_in[r].value = 0
-
-    # We have already spent M clock edges.  Wait for the pipeline to produce
-    # the first output (PIPELINE_LAT edges from cycle 0).
-    extra_wait = PIPELINE_LAT - M
-    if extra_wait > 0:
-        await ClockCycles(dut.clk, extra_wait)
-
-    # Collect M output rows; acc_out is stable immediately after each edge.
-    results = []
-    for i in range(M):
-        results.append([dut.acc_out[j].value.to_signed() for j in range(COLS)])
-        if i < M - 1:
-            await RisingEdge(dut.clk)
+        # After edge t, column j of row out_row = t - ROWS - j - 1 is readable.
+        for j in range(COLS):
+            out_row = t - ROWS - j - 1
+            if 0 <= out_row < M:
+                results[out_row][j] = dut.acc_out[j].value.to_signed()
 
     return results
 
@@ -138,8 +126,8 @@ async def test_matmul(dut):
 
     Computes C = A × B where A is M×K (M=ROWS, K=ROWS) and B is K×N (N=COLS).
     data_in[k] carries the k-th element of each input row; the module
-    applies input skewing internally.  acc_out[j] returns C[i][j] for all j
-    simultaneously after the de-skew pipeline.
+    applies input skewing internally.  acc_out[j] returns C[i][j] with column
+    j valid one cycle later than column j-1 (skewed, no hardware de-skew).
     """
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
