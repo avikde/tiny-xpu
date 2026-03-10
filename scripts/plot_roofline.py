@@ -45,7 +45,8 @@ def plot(series, out_path):
     """
     peak = series[0][2][0][3]  # hw_rows * hw_cols — same for all series
 
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, (ax_util, ax) = plt.subplots(1, 2, figsize=(12, 4))
+    markers = ["o", "s", "^", "D"]
 
     # ── Roofline ───────────────────────────────────────────────────────────────
     bw = 16
@@ -76,7 +77,6 @@ def plot(series, out_path):
                label=f"{peak} MACs/cycle (16×16)")
 
     # ── Operating points per weight shape ──────────────────────────────────────
-    markers = ["o", "s", "^", "D"]
     for (label, color, rows), marker in zip(series, markers):
         ais  = [r[1] for r in rows]
         perfs = [r[2] for r in rows]
@@ -99,6 +99,28 @@ def plot(series, out_path):
     ax.grid(True, which="both", alpha=0.25)
     ax.set_xlim(0.4, x_max)
     ax.set_ylim(0.5, peak * 4)
+
+    # ── PE utilization ─────────────────────────────────────────────────────────
+    # Measured efficiency from each weight-shape series.
+    for (label, color, rows), marker in zip(series, markers):
+        ms  = [r[0] for r in rows]
+        eff = [r[2] / r[3] * 100 for r in rows]  # macs_per_cycle / peak * 100
+        ax_util.semilogx(ms, eff, "-", color=color, linewidth=1.2, alpha=0.6)
+        ax_util.scatter(ms, eff, color=color, marker=marker, zorder=5, s=50,
+                        label=f"W shape {label}")
+        # Mirror the roofline M annotations so points can be cross-referenced.
+        for idx in (0, -1):
+            ax_util.annotate(f"M={ms[idx]}", (ms[idx], eff[idx]),
+                             textcoords="offset points", xytext=(5, 3),
+                             fontsize=7, color=color)
+
+    ax_util.set_xlabel("M (batch rows)", fontsize=12)
+    ax_util.set_ylabel("PE utilization (%)", fontsize=12)
+    ax_util.set_title("PE utilization  =  M / (M + pipeline_latency)", fontsize=12)
+    ax_util.legend(fontsize=9, loc="lower right")
+    ax_util.grid(True, which="both", alpha=0.25)
+    ax_util.set_ylim(0, 105)
+    ax_util.set_xlim(1, max(r[0] for r in series[0][2]))
 
     plt.tight_layout()
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
