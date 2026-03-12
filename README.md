@@ -11,12 +11,15 @@ While there are other projects building up small (~2x2) TPU-inspired designs (se
 
 ## Setup, build, and test
 
-Set up in WSL or other Linux: 
+### Prereqs for WSL or Linux (Debian/Ubuntu)
 
-- `sudo apt install iverilog` -- Icarus Verilog for simulation
-- `sudo apt install verilator` -- Compile SV -> C++ for EP linkage
-- Install pre-built onnxruntime (check https://github.com/microsoft/onnxruntime/releases) -- this is used to build the ONNX EP C++ library
-- `sudo apt install yosys` -- (optional) Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
+```sh
+sudo apt install iverilog   # Icarus Verilog for simulation
+sudo apt install verilator  # Compile SV -> C++ for EP linkage
+sudo apt install yosys      # optional, Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
+```
+
+Install pre-built onnxruntime (check https://github.com/microsoft/onnxruntime/releases) -- this is used to build the ONNX EP C++ library
 
 ```bash
 sudo mkdir -p /opt/onnxruntime
@@ -25,25 +28,61 @@ wget https://github.com/microsoft/onnxruntime/releases/download/v1.24.2/onnxrunt
 sudo tar -xzf onnxruntime-linux-x64-1.24.2.tgz -C /opt/onnxruntime --strip-components=1
 ```
 
-- Add the ONNX Runtime library to your library path:
+Add the ONNX Runtime library to your library path:
 
 ```bash
 echo 'export LD_LIBRARY_PATH=/opt/onnxruntime/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-Set up a venv for python packages
+Set up a venv for python packages:
 
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
+```
+
+### Prereqs for Mac (Homebrew)
+
+```sh
+brew install iverilog verilator yosys cmake
+```
+
+Install pre-built onnxruntime
+
+```bash
+sudo mkdir -p /opt/onnxruntime
+cd /tmp
+curl -OL https://github.com/microsoft/onnxruntime/releases/download/v1.24.2/onnxruntime-osx-arm64-1.24.2.tgz
+sudo tar -xzf onnxruntime-osx-arm64-1.24.2.tgz -C /opt/onnxruntime --strip-components=1
+```
+
+Add the ONNX Runtime library to your library path:
+
+```bash
+echo 'export DYLD_LIBRARY_PATH=/opt/onnxruntime/lib:$DYLD_LIBRARY_PATH' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Set up a venv for python packages:
+
+```sh
+brew install python@3.13 # open a new terminal after this
+python3.13 -m venv .venv
+source .venv/bin/activate
+```
+
+### Install Python packages
+
+```bash
+pip install matplotlib
 # Python tool for more powerful SystemVerilog testing
 pip install cocotb
 # Run ONNX models (matching onnxruntime version to the downloaded release)
 pip install onnxruntime==1.24.2 onnx
 ```
 
-Build:
+### Build
 
 ```shell
 mkdir -p build && cd build
@@ -74,19 +113,15 @@ Verilator simulation of the systolic array.
 
 **Step 2 — generate the ONNX model:**
 
-```shell
+```bash
 cd scripts
-python3 matmul.py
-# writes matmul_integer_4x4.onnx
+python3 matmul.py # writes matmul_integer_?x?.onnx
 ```
 
-The model contains a single `MatMulInteger` node:
+The models contain a single `MatMulInteger` node:
 - `X (int8, [M, 4])`
 - `W (int8, [4, 4])`
 - `Y (int32, [M, 4]) = MatMulInteger(X, W)`
-
-Constraints: `K = N = 4` (the hardware array dimensions).
-`M` is unrestricted — the array streams one row of `X` at a time.
 
 **Step 3 — run with the TinyXPU EP:**
 
