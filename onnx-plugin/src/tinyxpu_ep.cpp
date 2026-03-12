@@ -11,6 +11,8 @@
 #ifdef TINYXPU_USE_VERILATOR
 #include "Varray.h"
 #include "verilated.h"
+// Required when Verilator is built with SystemC support (e.g. Homebrew on macOS)
+double sc_time_stamp() { return 0; }
 #endif
 #include "tinyxpu_perf.h"
 
