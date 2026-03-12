@@ -35,15 +35,11 @@ echo 'export LD_LIBRARY_PATH=/opt/onnxruntime/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-Set up a venv for python packages
+Set up a venv for python packages:
 
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
-# Python tool for more powerful SystemVerilog testing
-pip install cocotb
-# Run ONNX models (matching onnxruntime version to the downloaded release)
-pip install onnxruntime==1.24.2 onnx
 ```
 
 ### Prereqs for Mac (Homebrew)
@@ -68,12 +64,18 @@ echo 'export DYLD_LIBRARY_PATH=/opt/onnxruntime/lib:$DYLD_LIBRARY_PATH' >> ~/.zs
 source ~/.zshrc
 ```
 
-Set up a venv for python packages
+Set up a venv for python packages:
 
 ```sh
 brew install python@3.13 # open a new terminal after this
 python3.13 -m venv .venv
 source .venv/bin/activate
+```
+
+### Install Python packages
+
+```bash
+pip install matplotlib
 # Python tool for more powerful SystemVerilog testing
 pip install cocotb
 # Run ONNX models (matching onnxruntime version to the downloaded release)

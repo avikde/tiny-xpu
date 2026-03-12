@@ -53,48 +53,78 @@ def plot(series, out_path):
     x_max = 10
 
     # Two compute ceilings: the actual 16×16 array and a smaller 8×8 reference.
-    peak_lo = 64   # 8×8 reference ceiling
-    ridge_lo = peak_lo / bw   # = 4.0  (visible on plot)
-    ridge_hi = peak / bw      # = 16.0 (off-screen)
+    peak_lo = 64  # 8×8 reference ceiling
+    ridge_lo = peak_lo / bw  # = 4.0  (visible on plot)
+    ridge_hi = peak / bw  # = 16.0 (off-screen)
 
     # BW diagonals
     bw_hi = 64
     # 64 B/cyc line: thick solid black (matches horizontal compute ceiling)
     ridge_bw_hi = peak / bw_hi  # = 4.0
-    ax.loglog([0.4, ridge_bw_hi], [bw_hi * 0.4, bw_hi * ridge_bw_hi],
-              "-", color="black", linewidth=2, label=f"Mem {bw_hi} B/cyc")
+    ax.loglog(
+        [0.4, ridge_bw_hi],
+        [bw_hi * 0.4, bw_hi * ridge_bw_hi],
+        "-",
+        color="black",
+        linewidth=2,
+        label=f"Mem {bw_hi} B/cyc",
+    )
 
     # 16 B/cyc line: dashed black (matches lower dashed ceiling)
-    ax.loglog([0.4, x_max], [bw * 0.4, bw * x_max],
-              "--", color="black", linewidth=1.5, label=f"Mem {bw} B/cyc")
+    ax.loglog(
+        [0.4, x_max],
+        [bw * 0.4, bw * x_max],
+        "--",
+        color="black",
+        linewidth=1.5,
+        label=f"Mem {bw} B/cyc",
+    )
 
     # Lower (dashed) ceiling at 64 MACs/cycle — ridge is visible at AI=4
-    ax.axhline(peak_lo, color="black", linewidth=1.5, linestyle="--",
-               label=f"{peak_lo} MACs/cycle (8×8 ref)")
+    ax.axhline(
+        peak_lo,
+        color="black",
+        linewidth=1.5,
+        linestyle="--",
+        label=f"{peak_lo} MACs/cycle (8×8 ref)",
+    )
 
     # Upper (solid) ceiling at peak MACs/cycle — ridge off-screen
-    ax.axhline(peak, color="black", linewidth=2,
-               label=f"{peak} MACs/cycle (16×16)")
+    ax.axhline(peak, color="black", linewidth=2, label=f"{peak} MACs/cycle (16×16)")
 
     # ── Operating points per weight shape ──────────────────────────────────────
     for (label, color, rows), marker in zip(series, markers):
-        ais  = [r[1] for r in rows]
+        ais = [r[1] for r in rows]
         perfs = [r[2] for r in rows]
-        ms   = [r[0] for r in rows]
+        ms = [r[0] for r in rows]
 
         ax.plot(ais, perfs, "-", color=color, linewidth=1.2, alpha=0.6)
-        ax.scatter(ais, perfs, color=color, marker=marker, zorder=5, s=50,
-                   label=f"W shape {label}")
+        ax.scatter(
+            ais,
+            perfs,
+            color=color,
+            marker=marker,
+            zorder=5,
+            s=50,
+            label=f"W shape {label}",
+        )
         # Annotate only the first and last M to avoid clutter
         for idx in (0, -1):
-            ax.annotate(f"M={ms[idx]}", (ais[idx], perfs[idx]),
-                        textcoords="offset points", xytext=(5, 3),
-                        fontsize=7, color=color)
+            ax.annotate(
+                f"M={ms[idx]}",
+                (ais[idx], perfs[idx]),
+                textcoords="offset points",
+                xytext=(5, 3),
+                fontsize=7,
+                color=color,
+            )
 
     # ── Labels ─────────────────────────────────────────────────────────────────
     ax.set_xlabel("Arithmetic Intensity (MACs / byte)", fontsize=12)
     ax.set_ylabel("Performance (MACs / cycle)", fontsize=12)
-    ax.set_title("TinyXPU Roofline 16x16-PE weight-stationary systolic array", fontsize=12)
+    ax.set_title(
+        "TinyXPU Roofline 16x16-PE weight-stationary systolic array", fontsize=12
+    )
     ax.legend(fontsize=9, loc="lower right")
     ax.grid(True, which="both", alpha=0.25)
     ax.set_xlim(0.4, x_max)
@@ -103,16 +133,28 @@ def plot(series, out_path):
     # ── PE utilization ─────────────────────────────────────────────────────────
     # Measured efficiency from each weight-shape series.
     for (label, color, rows), marker in zip(series, markers):
-        ms  = [r[0] for r in rows]
+        ms = [r[0] for r in rows]
         eff = [r[2] / r[3] * 100 for r in rows]  # macs_per_cycle / peak * 100
         ax_util.semilogx(ms, eff, "-", color=color, linewidth=1.2, alpha=0.6)
-        ax_util.scatter(ms, eff, color=color, marker=marker, zorder=5, s=50,
-                        label=f"W shape {label}")
+        ax_util.scatter(
+            ms,
+            eff,
+            color=color,
+            marker=marker,
+            zorder=5,
+            s=50,
+            label=f"W shape {label}",
+        )
         # Mirror the roofline M annotations so points can be cross-referenced.
         for idx in (0, -1):
-            ax_util.annotate(f"M={ms[idx]}", (ms[idx], eff[idx]),
-                             textcoords="offset points", xytext=(5, 3),
-                             fontsize=7, color=color)
+            ax_util.annotate(
+                f"M={ms[idx]}",
+                (ms[idx], eff[idx]),
+                textcoords="offset points",
+                xytext=(5, 3),
+                fontsize=7,
+                color=color,
+            )
 
     ax_util.set_xlabel("M (batch rows)", fontsize=12)
     ax_util.set_ylabel("PE utilization (%)", fontsize=12)
@@ -125,13 +167,20 @@ def plot(series, out_path):
     plt.tight_layout()
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     print(f"Saved: {out_path}")
+    import matplotlib
+
+    if matplotlib.get_backend() != "agg":
+        plt.show()
 
 
 def main() -> int:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.join(script_dir, "..")
 
-    default_so = os.path.join(repo_root, "build", "onnx-plugin", "libtinyxpu_ep.so")
+    plugin_lib = (
+        "libtinyxpu_ep.dylib" if sys.platform == "darwin" else "libtinyxpu_ep.so"
+    )
+    default_so = os.path.join(repo_root, "build", "onnx-plugin", plugin_lib)
     plugin_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else default_so)
 
     if not os.path.exists(plugin_path):
@@ -140,10 +189,10 @@ def main() -> int:
 
     # (display label, plot color, model filename, K = cols of A = rows of B)
     model_configs = [
-        ("4×16",   "#2196F3", "matmul_integer_4x16.onnx",  4),
-        ("8×8",    "#FF9800", "matmul_integer_8x8.onnx",   8),
-        ("16×4",   "#9C27B0", "matmul_integer_16x4.onnx", 16),
-        ("16×16",  "#E53935", "matmul_integer_16x16.onnx", 16),
+        ("4×16", "#2196F3", "matmul_integer_4x16.onnx", 4),
+        ("8×8", "#FF9800", "matmul_integer_8x8.onnx", 8),
+        ("16×4", "#9C27B0", "matmul_integer_16x4.onnx", 16),
+        ("16×16", "#E53935", "matmul_integer_16x16.onnx", 16),
     ]
 
     ort.register_execution_provider_library("SampleEP", plugin_path)
