@@ -6,10 +6,10 @@ runs inference via Verilator simulation, and verifies the result against a
 NumPy reference.
 
 Usage:
-    python scripts/run_matmul.py [path/to/libtinyxpu_ep.so]
+    python scripts/run_matmul.py [path/to/libtinyxpu_ep.so|.dylib]
 
-If no path is given, defaults to build/onnx-plugin/libtinyxpu_ep.so relative
-to the repo root.
+If no path is given, defaults to build/onnx-plugin/libtinyxpu_ep.{so,dylib}
+relative to the repo root (platform-dependent).
 """
 
 import ctypes
@@ -28,7 +28,11 @@ def main() -> int:
     repo_root = os.path.join(script_dir, "..")
 
     model_path = os.path.join(script_dir, "matmul_integer_16x16.onnx")
-    default_plugin = os.path.join(repo_root, "build", "onnx-plugin", "libtinyxpu_ep.so")
+    plugin_dir = os.path.join(repo_root, "build", "onnx-plugin")
+    if sys.platform == "darwin":
+        default_plugin = os.path.join(plugin_dir, "libtinyxpu_ep.dylib")
+    else:
+        default_plugin = os.path.join(plugin_dir, "libtinyxpu_ep.so")
     plugin_path = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else default_plugin)
 
     if not os.path.exists(model_path):
