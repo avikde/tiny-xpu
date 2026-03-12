@@ -687,17 +687,16 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         //
         // Hardware input skewing delays row r by r cycles internally, so all K
         // elements of output row i arrive at their respective PE column-0 at the
-        // same effective cycle.  Hardware output de-skewing aligns all COLS
-        // acc_out signals so they are valid simultaneously.
+        // same effective cycle.  acc_out[c] is wired directly to the bottom
+        // of column c with no de-skew registers.
         //
-        // Output row i is valid at tick i + (HW_ROWS + HW_COLS - 2) (0-based).
-        // Reading is interleaved with draining: at each tick t we collect output
-        // row t - (HW_ROWS + HW_COLS - 2) when that index is in [0, M).
+        // Column j of output row i is valid at tick i + HW_ROWS + j - 1 (0-based).
+        // At each tick t, column j carries output row t - (HW_ROWS + j - 1).
+        // We collect it when that row index is in [0, M).
         //
-        // Total ticks = M + (HW_ROWS + HW_COLS - 2).
-        // MAC efficiency → M / (M + HW_ROWS + HW_COLS - 2) ≈ 1 for large M.
-        const int64_t PIPELINE_LAT = HW_ROWS + HW_COLS - 2;
-        const int64_t total_ticks  = M + PIPELINE_LAT;
+        // Total ticks = M + HW_ROWS + N - 2  (last useful tick: row M-1, col N-1).
+        // MAC efficiency → M / (M + HW_ROWS + N - 2) ≈ 1 for large M.
+        const int64_t total_ticks = M + HW_ROWS + N - 2;
 
         arr.en = 1;
         for (int64_t t = 0; t < total_ticks; ++t) {
@@ -714,15 +713,12 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
 
             tick(); obs.ticks_streaming++;
 
-            // Collect output row (out_row = t - PIPELINE_LAT) when it becomes valid.
-            // Only the first N columns carry real results; padded columns are discarded.
-            const int64_t out_row = t - PIPELINE_LAT;
-            if (out_row >= 0 && out_row < M) {
-                for (int j = 0; j < HW_COLS; ++j) {
-                    if (j < N) {
-                        C_i32[out_row * N + j] = static_cast<int32_t>(arr.acc_out[j]);
-                        obs.output_reads++;     // one int32 element read from acc_out
-                    }
+            // Each column j becomes valid at a different tick (skewed reads).
+            for (int j = 0; j < N; ++j) {
+                const int64_t out_row = t - (HW_ROWS + j - 1);
+                if (out_row >= 0 && out_row < M) {
+                    C_i32[out_row * N + j] = static_cast<int32_t>(arr.acc_out[j]);
+                    obs.output_reads++;
                 }
             }
         }
