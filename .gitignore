@@ -8,3 +8,4 @@ scripts/*.onnx
 .venv
 .cache
 scripts/*.png
+.DS_Store

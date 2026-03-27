@@ -35,8 +35,9 @@ def _collect(session, lib, rng, M_values, K):
         p = tinyxpu_perf.get_last_perf(lib)
         o = p.obs
         perf = p.useful_mac_ops / o.ticks_streaming if o.ticks_streaming else 0.0
-        rows.append((m, p.ai_systolic, perf, o.hw_rows * o.hw_cols))
-    return rows  # [(M, ai_systolic, macs_per_cycle, peak_compute), ...]
+        latency = o.hw_rows + o.N - 2  # cycles to first output
+        rows.append((m, p.ai_systolic, perf, o.hw_rows * o.hw_cols, latency))
+    return rows  # [(M, ai_systolic, macs_per_cycle, peak_compute, latency), ...]
 
 
 def plot(series, out_path):
@@ -45,7 +46,8 @@ def plot(series, out_path):
     """
     peak = series[0][2][0][3]  # hw_rows * hw_cols — same for all series
 
-    fig, (ax_util, ax) = plt.subplots(1, 2, figsize=(12, 4))
+    fig, ((ax_util, ax_lat), (ax, ax_empty)) = plt.subplots(2, 2, figsize=(10, 8))
+    ax_empty.axis("off")
     markers = ["o", "s", "^", "D"]
 
     # ── Roofline ───────────────────────────────────────────────────────────────
@@ -163,6 +165,47 @@ def plot(series, out_path):
     ax_util.grid(True, which="both", alpha=0.25)
     ax_util.set_ylim(0, 105)
     ax_util.set_xlim(1, max(r[0] for r in series[0][2]))
+
+    # ── Throughput vs Latency (analytical, square weights K=N ≤ HW_ROWS) ────
+    # Weight matrix is K×N with K=N.  Array is HW_ROWS×HW_ROWS (square).
+    # Useful MACs per run = M * K * N = M * K^2.
+    # Streaming ticks = M + HW_ROWS + K - 2  (skew determined by HW_ROWS, not K).
+    # Latency to first output = HW_ROWS + K - 2.
+    # Throughput = M * K^2 / (M + HW_ROWS + K - 2).
+    M_fixed = 256
+    hw_rows_configs = [
+        (4,  "#4CAF50"),
+        (8,  "#FF9800"),
+        (16, "#2196F3"),
+        (32, "#E53935"),
+    ]
+
+    # K starts at 1 for the smallest array; larger arrays start where the
+    # previous one ends + 1 (you'd step up to the bigger array for bigger K).
+    hw_rows_k_min = {4: 1, 8: 5, 16: 9, 32: 17}
+    for hw_r, color in hw_rows_configs:
+        K_values = np.arange(hw_rows_k_min[hw_r], hw_r + 1)
+        lats = hw_r + K_values - 2
+        throughputs = M_fixed * K_values**2 / (M_fixed + lats)
+        ax_lat.plot(lats, throughputs, "-o", color=color, markersize=3,
+                    linewidth=1.2, label=f"ROWS={hw_r}")
+        for idx in (0, -1):
+            ax_lat.annotate(
+                f"K=N={K_values[idx]}",
+                (lats[idx], throughputs[idx]),
+                textcoords="offset points",
+                xytext=(5, 3),
+                fontsize=7,
+                color=color,
+            )
+
+    ax_lat.set_xlabel("Latency (cycles to first output = HW_ROWS + K − 2)", fontsize=12)
+    ax_lat.set_ylabel("Throughput (MACs / cycle)", fontsize=12)
+    ax_lat.set_title(f"Throughput vs. latency (M={M_fixed}, square W: K=N≤ROWS)", fontsize=12)
+    ax_lat.legend(fontsize=9, loc="upper left")
+    ax_lat.set_xscale("log")
+    ax_lat.set_yscale("log")
+    ax_lat.grid(True, which="both", alpha=0.25)
 
     plt.tight_layout()
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
