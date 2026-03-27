@@ -161,37 +161,35 @@ def plot(series, out_path):
     ax_util.set_xlabel("M (batch rows)", fontsize=12)
     ax_util.set_ylabel("PE utilization (%)", fontsize=12)
     ax_util.set_title("PE utilization  =  M / (M + pipeline_latency)", fontsize=12)
-    ax_util.legend(fontsize=9, loc="lower right")
+    ax_util.legend(fontsize=9, loc="upper left")
     ax_util.grid(True, which="both", alpha=0.25)
     ax_util.set_ylim(0, 105)
     ax_util.set_xlim(1, max(r[0] for r in series[0][2]))
 
-    # ── Throughput vs Latency (analytical, square weights K=N ≤ HW_ROWS) ────
-    # Weight matrix is K×N with K=N.  Array is HW_ROWS×HW_ROWS (square).
-    # Useful MACs per run = M * K * N = M * K^2.
-    # Streaming ticks = M + HW_ROWS + K - 2  (skew determined by HW_ROWS, not K).
-    # Latency to first output = HW_ROWS + K - 2.
-    # Throughput = M * K^2 / (M + HW_ROWS + K - 2).
+    # ── Throughput vs Latency (analytical, fixed ROWS=16, varying N per K) ──
+    # Array is 16×16.  Weight matrix is K×N with K ≤ 16, N ≤ 16.
+    # Useful MACs per run = M * K * N.
+    # Streaming ticks = M + HW_ROWS + N - 2.
+    # Latency to first output = HW_ROWS + N - 2.
+    # Throughput = M * K * N / (M + HW_ROWS + N - 2).
     M_fixed = 256
-    hw_rows_configs = [
+    HW_R = 16
+    k_configs = [
         (4,  "#4CAF50"),
         (8,  "#FF9800"),
         (16, "#2196F3"),
-        (32, "#E53935"),
     ]
+    total_size = 64  # K * N_max = constant across lines
 
-    # K starts at 1 for the smallest array; larger arrays start where the
-    # previous one ends + 1 (you'd step up to the bigger array for bigger K).
-    hw_rows_k_min = {4: 1, 8: 5, 16: 9, 32: 17}
-    for hw_r, color in hw_rows_configs:
-        K_values = np.arange(hw_rows_k_min[hw_r], hw_r + 1)
-        lats = hw_r + K_values - 2
-        throughputs = M_fixed * K_values**2 / (M_fixed + lats)
+    for K, color in k_configs:
+        N_values = np.arange(1, total_size // K + 1)
+        lats = HW_R + N_values - 2
+        throughputs = M_fixed * K * N_values / (M_fixed + lats)
         ax_lat.plot(lats, throughputs, "-o", color=color, markersize=3,
-                    linewidth=1.2, label=f"ROWS={hw_r}")
+                    linewidth=1.2, label=f"K={K}")
         for idx in (0, -1):
             ax_lat.annotate(
-                f"K=N={K_values[idx]}",
+                f"N={N_values[idx]}",
                 (lats[idx], throughputs[idx]),
                 textcoords="offset points",
                 xytext=(5, 3),
@@ -199,11 +197,12 @@ def plot(series, out_path):
                 color=color,
             )
 
-    ax_lat.set_xlabel("Latency (cycles to first output = HW_ROWS + K − 2)", fontsize=12)
+    ax_lat.axhline(64, color="black", linewidth=1.5, linestyle="--",
+                    label="64 MACs/cycle")
+    ax_lat.set_xlabel("Latency (cycles to first output = ROWS + N − 2)", fontsize=12)
     ax_lat.set_ylabel("Throughput (MACs / cycle)", fontsize=12)
-    ax_lat.set_title(f"Throughput vs. latency (M={M_fixed}, square W: K=N≤ROWS)", fontsize=12)
-    ax_lat.legend(fontsize=9, loc="upper left")
-    ax_lat.set_xscale("log")
+    ax_lat.set_title(f"Throughput vs. latency (ROWS=16, M={M_fixed})", fontsize=12)
+    ax_lat.legend(fontsize=9, loc="lower right")
     ax_lat.set_yscale("log")
     ax_lat.grid(True, which="both", alpha=0.25)
 
