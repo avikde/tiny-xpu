@@ -352,49 +352,58 @@ OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(
         }
 
 #ifdef TINYXPU_USE_VERILATOR
-        const bool is_our_op = op_type && std::strcmp(op_type, "MatMulInteger") == 0;
+        const bool is_matmul_integer = op_type && std::strcmp(op_type, "MatMulInteger") == 0;
+        const bool is_relu           = op_type && std::strcmp(op_type, "Relu") == 0;
+        const bool is_our_op = is_matmul_integer || is_relu;
 #else
+        const bool is_matmul_integer = false;
+        const bool is_relu           = false;
         const bool is_our_op = op_type &&
             (std::strcmp(op_type, "MatMul") == 0 || std::strcmp(op_type, "Gemm") == 0);
 #endif
         if (is_our_op) {
 #ifdef TINYXPU_USE_VERILATOR
-            // Claim MatMulInteger nodes if the weight (input[1]) is statically
-            // known to be int8, OR if the weight type is unknown (dynamic
-            // quantization graphs compute the activation type at runtime via
-            // DynamicQuantizeLinear, so input[0] has no static type info).
-            // We verify the actual element types in ComputeImpl.
-            bool inputs_ok = false;
-            {
-                size_t ni = 0;
-                if (!apis.ort_api->Node_GetNumInputs(node, &ni) && ni >= 2) {
-                    std::vector<const OrtValueInfo*> vi(ni, nullptr);
-                    if (!apis.ort_api->Node_GetInputs(node, vi.data(), ni)) {
-                        // Check weight (input[1]): must be int8 if type is known.
-                        // If type info is unavailable (runtime value), accept anyway.
-                        bool weight_ok = false;
-                        if (vi[1]) {
-                            const OrtTypeInfo* ti = nullptr;
-                            if (apis.ort_api->GetValueInfoTypeInfo(vi[1], &ti) || !ti) {
-                                weight_ok = true;  // no static type → accept
-                            } else {
-                                const OrtTensorTypeAndShapeInfo* tsi = nullptr;
-                                if (!apis.ort_api->CastTypeInfoToTensorInfo(ti, &tsi) && tsi) {
-                                    ONNXTensorElementDataType et = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-                                    if (!apis.ort_api->GetTensorElementType(tsi, &et))
-                                        weight_ok = (et == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8);
+            if (is_matmul_integer) {
+                // Claim MatMulInteger nodes if the weight (input[1]) is statically
+                // known to be int8, OR if the weight type is unknown (dynamic
+                // quantization graphs compute the activation type at runtime via
+                // DynamicQuantizeLinear, so input[0] has no static type info).
+                // We verify the actual element types in ComputeImpl.
+                bool inputs_ok = false;
+                {
+                    size_t ni = 0;
+                    if (!apis.ort_api->Node_GetNumInputs(node, &ni) && ni >= 2) {
+                        std::vector<const OrtValueInfo*> vi(ni, nullptr);
+                        if (!apis.ort_api->Node_GetInputs(node, vi.data(), ni)) {
+                            // Check weight (input[1]): must be int8 if type is known.
+                            // If type info is unavailable (runtime value), accept anyway.
+                            bool weight_ok = false;
+                            if (vi[1]) {
+                                const OrtTypeInfo* ti = nullptr;
+                                if (apis.ort_api->GetValueInfoTypeInfo(vi[1], &ti) || !ti) {
+                                    weight_ok = true;  // no static type → accept
                                 } else {
-                                    weight_ok = true;  // no tensor info → accept
+                                    const OrtTensorTypeAndShapeInfo* tsi = nullptr;
+                                    if (!apis.ort_api->CastTypeInfoToTensorInfo(ti, &tsi) && tsi) {
+                                        ONNXTensorElementDataType et = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+                                        if (!apis.ort_api->GetTensorElementType(tsi, &et))
+                                            weight_ok = (et == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8);
+                                    } else {
+                                        weight_ok = true;  // no tensor info → accept
+                                    }
                                 }
                             }
+                            inputs_ok = weight_ok;
                         }
-                        inputs_ok = weight_ok;
                     }
                 }
+                if (!inputs_ok) continue;
+                printf("  [TinyXPU EP] Claiming op: MatMulInteger (int8, %dx%d systolic array)\n",
+                       TINYXPU_ARRAY_ROWS, TINYXPU_ARRAY_COLS);
+            } else {
+                // Relu: no type-check needed, just claim it.
+                printf("  [TinyXPU EP] Claiming op: Relu\n");
             }
-            if (!inputs_ok) continue;
-            printf("  [TinyXPU EP] Claiming op: MatMulInteger (int8, %dx%d systolic array)\n",
-                   TINYXPU_ARRAY_ROWS, TINYXPU_ARRAY_COLS);
 #else
             printf("  [TinyXPU EP] Claiming op: %s (CPU float32 fallback)\n", op_type);
 #endif
@@ -591,9 +600,10 @@ SampleNodeComputeInfo* SampleNodeComputeInfo::FromOrt(OrtNodeComputeInfo* ort_in
     return CONTAINER_OF(ort_info, SampleNodeComputeInfo, compute_info_);
 }
 
-SampleNodeComputeInfo::SampleNodeComputeInfo(const ApiPtrs& apis, std::string op_type_str, bool transB_flag)
+SampleNodeComputeInfo::SampleNodeComputeInfo(const ApiPtrs& apis, std::string op_type_str,
+                                             bool transB_flag, bool fused_relu_flag)
     : ort_api(apis.ort_api), ep_api(apis.ep_api),
-      op_type(std::move(op_type_str)), transB(transB_flag) {
+      op_type(std::move(op_type_str)), transB(transB_flag), fused_relu(fused_relu_flag) {
 
     // Zero-initialize the OrtNodeComputeInfo struct
     std::memset(&compute_info_, 0, sizeof(compute_info_));
@@ -630,6 +640,42 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
 
     auto* info = FromOrt(this_);
     (void)compute_state;
+
+    // ---- Relu: single-input, same-shape float32 output ----------------------
+    if (info->op_type == "Relu") {
+        const OrtValue* input = nullptr;
+        OrtStatus* s = info->ort_api->KernelContext_GetInput(kernel_context, 0, &input);
+        if (s) return s;
+        if (!input)
+            return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT, "relu: missing input");
+
+        OrtTensorTypeAndShapeInfo* si = nullptr;
+        s = info->ort_api->GetTensorTypeAndShape(input, &si);
+        if (s) return s;
+        size_t ndim = 0;
+        info->ort_api->GetDimensionsCount(si, &ndim);
+        std::vector<int64_t> shape(ndim);
+        info->ort_api->GetDimensions(si, shape.data(), ndim);
+        info->ort_api->ReleaseTensorTypeAndShapeInfo(si);
+
+        OrtValue* output = nullptr;
+        s = info->ort_api->KernelContext_GetOutput(kernel_context, 0, shape.data(), shape.size(), &output);
+        if (s) return s;
+
+        const void* in_raw = nullptr;
+        void* out_raw = nullptr;
+        info->ort_api->GetTensorData(input, &in_raw);
+        info->ort_api->GetTensorMutableData(output, &out_raw);
+
+        int64_t total = 1;
+        for (auto d : shape) total *= d;
+        const float* in_f  = static_cast<const float*>(in_raw);
+        float*       out_f = static_cast<float*>(out_raw);
+        for (int64_t i = 0; i < total; ++i)
+            out_f[i] = in_f[i] > 0.0f ? in_f[i] : 0.0f;
+
+        return nullptr;
+    }
 
     // ---- fetch inputs -------------------------------------------------------
     const OrtValue* input_A = nullptr;
@@ -725,6 +771,7 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     const int8_t* A_i8 = static_cast<const int8_t*>(A_raw);
     const int8_t* B_i8 = static_cast<const int8_t*>(B_raw);
     int32_t*      C_i32 = static_cast<int32_t*>(C_raw);
+    const bool apply_relu = info->fused_relu;
 
     // run_slice: drive the Verilator systolic array for one 2-D tile.
     // A_sl: [total_M, K_sl], B_sl: [K_sl, N_sl] (contiguous), C_sl: [total_M, N_sl].
@@ -745,6 +792,7 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         };
 
         arr.clk = 0; arr.rst_n = 0; arr.en = 0; arr.weight_ld = 0;
+        arr.relu_en = apply_relu ? 1 : 0;
         for (int k = 0; k < HW_ROWS; ++k) arr.data_in[k] = 0;
         for (int r = 0; r < HW_ROWS; ++r)
             for (int c = 0; c < HW_COLS; ++c)

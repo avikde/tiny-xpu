@@ -16,6 +16,7 @@ async def reset_dut(dut):
     """Apply active-low reset for a few cycles."""
     dut.rst_n.value = 0
     dut.en.value = 0
+    dut.relu_en.value = 0
     dut.weight_ld.value = 0
     for r in range(ROWS):
         dut.data_in[r].value = 0
@@ -150,6 +151,57 @@ async def test_matmul(dut):
             expected = int(C_expected[i][j])
             assert results[i][j] == expected, (
                 f"C[{i}][{j}]: expected {expected}, got {results[i][j]}"
+            )
+
+
+@cocotb.test()
+async def test_relu_en(dut):
+    """relu_en=1 clamps negative acc_out to 0; positive values pass through."""
+    clock = Clock(dut.clk, 10, unit="ns")
+    cocotb.start_soon(clock.start())
+
+    await reset_dut(dut)
+
+    rng = np.random.default_rng(77)
+    # Mixed-sign weights produce a mix of positive and negative outputs.
+    A = rng.integers(-5, 6, size=(ROWS, ROWS), dtype=np.int8)
+    B = rng.integers(-5, 6, size=(ROWS, COLS), dtype=np.int8)
+    C_expected = A.astype(np.int32) @ B.astype(np.int32)
+    C_relu     = np.maximum(C_expected, 0)
+
+    # Verify there is at least one negative entry so the test is meaningful.
+    assert np.any(C_expected < 0), "test setup: expected some negative outputs"
+
+    await load_weights(dut, B)
+
+    # --- relu_en = 1 ---
+    dut.relu_en.value = 1
+    dut.en.value = 1
+    results = await stream_and_collect(dut, A)
+    dut.en.value = 0
+    dut.relu_en.value = 0
+
+    for i in range(4):
+        for j in range(COLS):
+            expected = int(C_relu[i][j])
+            assert results[i][j] == expected, (
+                f"ReLU C[{i}][{j}]: expected {expected}, got {results[i][j]}"
+            )
+
+    # --- relu_en = 0: same weights, outputs should match raw matmul ---
+    await reset_dut(dut)
+    await load_weights(dut, B)
+
+    dut.relu_en.value = 0
+    dut.en.value = 1
+    results_no_relu = await stream_and_collect(dut, A)
+    dut.en.value = 0
+
+    for i in range(4):
+        for j in range(COLS):
+            expected = int(C_expected[i][j])
+            assert results_no_relu[i][j] == expected, (
+                f"No-ReLU C[{i}][{j}]: expected {expected}, got {results_no_relu[i][j]}"
             )
 
 

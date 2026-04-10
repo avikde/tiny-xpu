@@ -32,6 +32,7 @@ module array #(
     input  logic clk,
     input  logic rst_n,
     input  logic en,
+    input  logic relu_en,   // when 1, clamp acc_out negatives to 0 (hardware ReLU)
 
     // Activation inputs — one per row, stream east through the array.
     // Present row i of A on data_in[*] at streaming cycle i; the module
@@ -149,7 +150,9 @@ module array #(
     genvar c_ds;
     generate
         for (c_ds = 0; c_ds < COLS; c_ds++) begin : gen_acc_out
-            assign acc_out[c_ds] = acc_wire[ROWS][c_ds];
+            assign acc_out[c_ds] = (relu_en && acc_wire[ROWS][c_ds][ACC_WIDTH-1])
+                                   ? '0
+                                   : acc_wire[ROWS][c_ds];
         end
     endgenerate
 

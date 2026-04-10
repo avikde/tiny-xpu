@@ -67,7 +67,6 @@ source .venv/bin/activate
 python scripts/matmul.py          # generates matmul_integer_?x?.onnx
 python scripts/run_matmul.py      # 2-D MatMulInteger via Verilator, verifies vs NumPy
 python scripts/test_ops.py        # batched MatMulInteger + Gemm tests
-python scripts/run_bert_tiny.py   # download prajjwal1/bert-tiny, quantize, run on EP
 ```
 
 ## Systolic Array Architecture
@@ -100,62 +99,62 @@ acc_in ──►│          ├──► acc_out
 - Phase 2 (`weight_ld=0, en=1`): stream activations, accumulate partial sums
 - `int8 × int8 → int32`, then `int32 + int32 → int32`
 
-## Running a Real Model: MNIST LeNet
+## Running a Real Model: QuickDraw Sketch Classifier
 
-`scripts/run_mnist.py` downloads the [ONNX Model Zoo MNIST](https://github.com/onnx/models/tree/main/validated/vision/classification/mnist) LeNet model, applies dynamic int8 quantization, and runs it end-to-end through the TinyXPU EP.
+`scripts/train_quickdraw.py` downloads a subset of the [Google QuickDraw](https://github.com/googlecreativelab/quickdraw-dataset) dataset (28×28 hand-drawn sketches — same bitmap format as MNIST), trains a three-layer MLP, and exports a dynamically-quantized ONNX model. `scripts/run_quickdraw.py` then runs it end-to-end through the TinyXPU EP.
 
-This model is an ideal pedagogical target: it is a well-known, pretrained classifier whose compute is dominated by operations the systolic array handles natively, with no changes required to the SystemVerilog.
+A pure MLP is the ideal target for this hardware: every compute-heavy operation is `MatMulInteger` on the systolic array, and `Relu` is now also claimed by the EP — **the CPU EP handles nothing from the model's forward pass.**
 
-### Model preparation
+### Hardware ReLU
 
+The systolic array has a `relu_en` input. When asserted, the output stage clamps any negative `acc_out` value to zero in the same cycle (purely combinational, zero latency). The EP drives `relu_en=1` when a fused `MatMulInteger+Relu` kernel is compiled.
+
+### Training and export
+
+```sh
+source .venv/bin/activate
+python scripts/train_quickdraw.py          # downloads data, trains, exports
 ```
-mnist-12.onnx  (ONNX Model Zoo, float32 LeNet)
-        │
-        │  onnxruntime.quantization.quantize_dynamic   # dynamic int8 quantization
-        ▼
-mnist-int8.onnx
-```
 
-**Dynamic int8 quantization** replaces each `Conv`/`MatMul` with an integer kernel plus dequantization:
+This produces:
+- `quickdraw.onnx` — float32 model
+- `quickdraw-int8.onnx` — dynamically quantized (QInt8 weights)
+
+**Dynamic int8 quantization** replaces each `MatMul` with an integer kernel:
 
 ```
 DynamicQuantizeLinear(activation) ──► (a_int8, a_scale, a_zero_point)
                                               │
-ConvInteger / MatMulInteger ────────────────►│◄── w_int8  (pre-quantized weight)
+MatMulInteger ──────────────────────────────►│◄── w_int8  (pre-quantized weight)
         │
         ▼  int32
 Cast → float32
         │
-Mul(combined_scale) → Add(bias) → …
-```
-
-### Mapping convolutions to the systolic array
-
-Systolic arrays are the standard hardware primitive for convolution because convolution *is* matrix multiplication in disguise. The EP performs an **im2col** transform in C++ to convert each convolution into a `MatMulInteger` call, requiring no changes to the SystemVerilog:
-
-```
-Input patch (H_out × W_out, C_in × kH × kW)  ←  im2col
-Weight matrix (C_out, C_in × kH × kW)ᵀ
-        │
-        ▼
-MatMulInteger on systolic array → output feature map (H_out × W_out, C_out)
+Mul(combined_scale) → Add(bias) → Relu → …
 ```
 
 ### What the hardware sees vs what the CPU handles
 
 | Layer | Operator | Handled by |
 |-------|----------|------------|
-| Conv1 (5×5, 1→20) | `ConvInteger` → im2col → `MatMulInteger` | **TinyXPU** |
-| Conv2 (5×5, 20→50) | `ConvInteger` → im2col → `MatMulInteger` | **TinyXPU** |
-| FC1 (800→500) | `MatMulInteger` | **TinyXPU** |
-| FC2 (500→10) | `MatMulInteger` | **TinyXPU** |
-| ReLU | `Relu` | EP (C++ post-processing) |
-| Pooling | `MaxPool` | CPU EP |
+| FC1 (784→512) | `MatMulInteger` | **TinyXPU** (systolic array) |
+| ReLU | `Relu` | **TinyXPU** (EP C++ kernel) |
+| FC2 (512→256) | `MatMulInteger` | **TinyXPU** (systolic array) |
+| ReLU | `Relu` | **TinyXPU** (EP C++ kernel) |
+| FC3 (256→10) | `MatMulInteger` | **TinyXPU** (systolic array) |
+| Dequantize | `DynamicQuantizeLinear`, `Cast`, `Mul`, `Add` | CPU EP |
 | Output | `Softmax` | CPU EP |
+
+### Running the classifier
+
+```sh
+source .venv/bin/activate
+python scripts/run_quickdraw.py
+```
 
 ### Tiling
 
-The default 16×16 array tiles each matrix multiply into `⌈K/16⌉ × ⌈N/16⌉` blocks. For FC1 (800→500) this is `50 × 32 = 1600` hardware passes. Rebuilding with larger `-DSIM_ROWS` / `-DSIM_COLS` reduces pass count proportionally.
+The default 16×16 array tiles each matrix multiply into `⌈K/16⌉ × ⌈N/16⌉` blocks. For FC1 (784→512) this is `49 × 32 = 1568` hardware passes. Rebuilding with larger `-DSIM_ROWS` / `-DSIM_COLS` reduces pass count proportionally.
 
 ## Related Projects
 
