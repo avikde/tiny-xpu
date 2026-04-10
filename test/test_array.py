@@ -17,11 +17,17 @@ async def reset_dut(dut):
     dut.rst_n.value = 0
     dut.en.value = 0
     dut.relu_en.value = 0
+    dut.requant_en.value = 0
+    dut.M0.value = 0
+    dut.rshift.value = 0
+    dut.zero_pt.value = 0
     dut.weight_ld.value = 0
     for r in range(ROWS):
         dut.data_in[r].value = 0
         for c in range(COLS):
             dut.weight_in[r * COLS + c].value = 0
+    for c in range(COLS):
+        dut.bias_in[c].value = 0
     await ClockCycles(dut.clk, 3)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
@@ -152,6 +158,96 @@ async def test_matmul(dut):
             assert results[i][j] == expected, (
                 f"C[{i}][{j}]: expected {expected}, got {results[i][j]}"
             )
+
+
+@cocotb.test()
+async def test_requant(dut):
+    """requant_en=1: q_out matches Python reference clamp(round(A@W * S), -128, 127)."""
+    clock = Clock(dut.clk, 10, unit="ns")
+    cocotb.start_soon(clock.start())
+
+    await reset_dut(dut)
+
+    rng = np.random.default_rng(55)
+    A = rng.integers(-5, 6, size=(ROWS, ROWS), dtype=np.int8)
+    B = rng.integers(-5, 6, size=(ROWS, COLS), dtype=np.int8)
+    C_int32 = A.astype(np.int32) @ B.astype(np.int32)  # [ROWS, COLS]
+
+    # Choose a scale that keeps values in int8 range after requant.
+    # S ≈ 1/200  →  M0 = round(S * 2^31), rshift = 31
+    S_float  = 1.0 / 200.0
+    RSHIFT   = 31
+    M0_val   = int(round(S_float * (1 << RSHIFT)))
+    ZERO_PT  = 0
+
+    # Python reference: replicate hardware integer arithmetic exactly.
+    # product = biased * M0  (int64); shifted = product >> rshift  (arithmetic, truncation);
+    # then clamp to [-128, 127].
+    _product = C_int32.astype(np.int64) * np.int64(M0_val)
+    _shifted = _product >> RSHIFT   # arithmetic right-shift in Python matches hardware truncation
+    C_ref = np.clip(_shifted, -128, 127).astype(np.int8)
+
+    await load_weights(dut, B)
+
+    dut.requant_en.value = 1
+    dut.relu_en.value    = 0
+    dut.M0.value         = M0_val
+    dut.rshift.value     = RSHIFT
+    dut.zero_pt.value    = ZERO_PT
+    for c in range(COLS):
+        dut.bias_in[c].value = 0  # no bias in this test
+
+    dut.en.value = 1
+    results = await stream_and_collect(dut, A)
+    dut.en.value = 0
+    dut.requant_en.value = 0
+
+    # results[] contains the raw acc_out (int32); q_out is a separate port.
+    # For the requant test we read q_out directly.
+    for i in range(4):
+        for j in range(COLS):
+            got = dut.q_out[j].value.to_signed()
+            # q_out is valid at the same cycle as acc_out — already captured above
+            # because stream_and_collect reads after each rising edge.
+            # Re-read from the DUT's q_out at the final steady state for row 0..3.
+            # (stream_and_collect only captures acc_out; we verify q_out via a
+            #  separate single-row check below.)
+            _ = got  # suppress lint
+
+    # Single-row verification: stream one row and check q_out immediately.
+    await reset_dut(dut)
+    await load_weights(dut, B)
+
+    dut.requant_en.value = 1
+    dut.M0.value         = M0_val
+    dut.rshift.value     = RSHIFT
+    dut.zero_pt.value    = ZERO_PT
+    dut.en.value         = 1
+
+    # Stream row 0, then drain until output is valid.
+    # cocotb reads in NBA phase (after the rising edge), so q_out[j] for row 0 is
+    # readable after edge ROWS + j + 1  (same convention as stream_and_collect).
+    for t in range(1, ROWS + COLS + 1):
+        if t <= 1:
+            for r in range(ROWS):
+                dut.data_in[r].value = int(A[0][r])
+        else:
+            for r in range(ROWS):
+                dut.data_in[r].value = 0
+        await RisingEdge(dut.clk)
+
+        # After edge t, q_out[j] for row 0 is valid when t == ROWS + j + 1.
+        for j in range(COLS):
+            if t == ROWS + j + 1:
+                got      = dut.q_out[j].value.to_signed()
+                expected = int(C_ref[0][j])
+                assert got == expected, (
+                    f"requant q_out[{j}]: expected {expected}, got {got} "
+                    f"(acc={C_int32[0][j]}, S={S_float:.6f})"
+                )
+
+    dut.en.value = 0
+    dut.requant_en.value = 0
 
 
 @cocotb.test()

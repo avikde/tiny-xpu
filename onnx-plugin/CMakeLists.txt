@@ -73,12 +73,13 @@ if(SIM)
         message(FATAL_ERROR "SIM=ON but Verilator not found. Install with: sudo apt install verilator")
     endif()
 
-    set(SIM_ROWS 16 CACHE STRING "Systolic array row count (overrides array.sv ROWS parameter)")
-    set(SIM_COLS 16 CACHE STRING "Systolic array column count (overrides array.sv COLS parameter)")
+    set(SIM_ROWS 64 CACHE STRING "Systolic array row count (overrides array.sv ROWS parameter)")
+    set(SIM_COLS 64 CACHE STRING "Systolic array column count (overrides array.sv COLS parameter)")
 
     verilate(tinyxpu_ep
         SOURCES
             ${CMAKE_SOURCE_DIR}/src/pe.sv
+            ${CMAKE_SOURCE_DIR}/src/requant.sv
             ${CMAKE_SOURCE_DIR}/src/array.sv
         TOP_MODULE  array
         PREFIX      Varray
@@ -90,6 +91,14 @@ if(SIM)
         TINYXPU_ARRAY_ROWS=${SIM_ROWS}
         TINYXPU_ARRAY_COLS=${SIM_COLS}
     )
+
+    # Mark Verilator's own headers as SYSTEM so the compiler doesn't emit
+    # warnings from generated/runtime code.
+    target_include_directories(tinyxpu_ep SYSTEM PRIVATE
+        ${VERILATOR_ROOT}/include
+        ${VERILATOR_ROOT}/include/vltstd
+    )
+
     message(STATUS "SIM=ON: Verilator ${verilator_VERSION}, array ${SIM_ROWS}x${SIM_COLS}")
 endif()
 

@@ -51,7 +51,17 @@ module array #(
     // Accumulated results from the bottom row, one per column.
     // Not de-skewed: acc_out[c] for output row i is valid at cycle i + ROWS + c
     // (1-indexed).  Driver reads each column at its own tick.
-    output logic signed [ACC_WIDTH-1:0]  acc_out [COLS]
+    output logic signed [ACC_WIDTH-1:0]  acc_out [COLS],
+
+    // Requantization output stage (active when requant_en=1).
+    // Converts acc_out int32 → int8 using fixed-point multiply-shift-saturate.
+    // q_out[c] is valid at the same cycle as acc_out[c].
+    input  logic                         requant_en,
+    input  logic signed [ACC_WIDTH-1:0]  bias_in  [COLS],  // per-column int32 bias
+    input  logic        [30:0]           M0,                // fixed-point multiplier
+    input  logic        [4:0]            rshift,            // right-shift amount
+    input  logic signed [DATA_WIDTH-1:0] zero_pt,           // output zero-point
+    output logic signed [DATA_WIDTH-1:0] q_out    [COLS]    // int8 requantized output
 );
 
     // Horizontal data wires: data_wire[r][c] feeds PE(r,c).data_in
@@ -145,15 +155,48 @@ module array #(
     // Output: direct wires, no de-skew registers.
     // acc_out[c] = acc_wire[ROWS][c]; column c of row i is valid at
     // cycle i + ROWS + c (1-indexed).
+    // relu_en without requant_en still clamps acc_out negatives to 0.
     // ----------------------------------------------------------------
 
     genvar c_ds;
     generate
         for (c_ds = 0; c_ds < COLS; c_ds++) begin : gen_acc_out
-            assign acc_out[c_ds] = (relu_en && acc_wire[ROWS][c_ds][ACC_WIDTH-1])
+            assign acc_out[c_ds] = (relu_en && !requant_en && acc_wire[ROWS][c_ds][ACC_WIDTH-1])
                                    ? '0
                                    : acc_wire[ROWS][c_ds];
         end
     endgenerate
+
+    // ----------------------------------------------------------------
+    // Requantization stage (combinational, active when requant_en=1).
+    // When requant_en=0 q_out is undefined — only acc_out should be read.
+    // relu_en is forwarded to requant so activation and requant share one
+    // control signal.
+    //
+    // acc_wire[ROWS] is a 2-D array slice; iverilog does not support passing
+    // such slices directly as port connections, so copy into a flat 1-D wire.
+    // ----------------------------------------------------------------
+
+    logic signed [ACC_WIDTH-1:0] acc_bottom [COLS];
+    genvar c_rq;
+    generate
+        for (c_rq = 0; c_rq < COLS; c_rq++) begin : gen_acc_bottom
+            assign acc_bottom[c_rq] = acc_wire[ROWS][c_rq];
+        end
+    endgenerate
+
+    requant #(
+        .COLS      (COLS),
+        .ACC_WIDTH (ACC_WIDTH),
+        .DAT_WIDTH (DATA_WIDTH)
+    ) u_requant (
+        .acc_in  (acc_bottom),
+        .bias_in (bias_in),
+        .M0      (M0),
+        .rshift  (rshift),
+        .zero_pt (zero_pt),
+        .relu_en (relu_en),
+        .q_out   (q_out)
+    );
 
 endmodule
