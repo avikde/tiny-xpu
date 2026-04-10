@@ -359,28 +359,36 @@ OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(
 #endif
         if (is_our_op) {
 #ifdef TINYXPU_USE_VERILATOR
-            // Only claim MatMulInteger nodes whose first two inputs are int8.
-            // Skip (don't claim) if we can't confirm this.
+            // Claim MatMulInteger nodes if the weight (input[1]) is statically
+            // known to be int8, OR if the weight type is unknown (dynamic
+            // quantization graphs compute the activation type at runtime via
+            // DynamicQuantizeLinear, so input[0] has no static type info).
+            // We verify the actual element types in ComputeImpl.
             bool inputs_ok = false;
             {
                 size_t ni = 0;
                 if (!apis.ort_api->Node_GetNumInputs(node, &ni) && ni >= 2) {
                     std::vector<const OrtValueInfo*> vi(ni, nullptr);
                     if (!apis.ort_api->Node_GetInputs(node, vi.data(), ni)) {
-                        inputs_ok = true;
-                        for (int idx = 0; idx < 2 && inputs_ok; ++idx) {
-                            if (!vi[idx]) { inputs_ok = false; break; }
+                        // Check weight (input[1]): must be int8 if type is known.
+                        // If type info is unavailable (runtime value), accept anyway.
+                        bool weight_ok = false;
+                        if (vi[1]) {
                             const OrtTypeInfo* ti = nullptr;
-                            if (apis.ort_api->GetValueInfoTypeInfo(vi[idx], &ti) || !ti)
-                                { inputs_ok = false; break; }
-                            const OrtTensorTypeAndShapeInfo* tsi = nullptr;
-                            if (apis.ort_api->CastTypeInfoToTensorInfo(ti, &tsi) || !tsi)
-                                { inputs_ok = false; break; }
-                            ONNXTensorElementDataType et = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-                            if (apis.ort_api->GetTensorElementType(tsi, &et) ||
-                                et != ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8)
-                                { inputs_ok = false; break; }
+                            if (apis.ort_api->GetValueInfoTypeInfo(vi[1], &ti) || !ti) {
+                                weight_ok = true;  // no static type → accept
+                            } else {
+                                const OrtTensorTypeAndShapeInfo* tsi = nullptr;
+                                if (!apis.ort_api->CastTypeInfoToTensorInfo(ti, &tsi) && tsi) {
+                                    ONNXTensorElementDataType et = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+                                    if (!apis.ort_api->GetTensorElementType(tsi, &et))
+                                        weight_ok = (et == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8);
+                                } else {
+                                    weight_ok = true;  // no tensor info → accept
+                                }
+                            }
                         }
+                        inputs_ok = weight_ok;
                     }
                 }
             }
@@ -712,20 +720,18 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     constexpr int HW_ROWS = TINYXPU_ARRAY_ROWS;
     constexpr int HW_COLS = TINYXPU_ARRAY_COLS;
 
-    if (K > HW_ROWS || N > HW_COLS)
-        return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
-            "TinyXPU: MatMulInteger requires K<=HW_ROWS and N<=HW_COLS");
-
+    // No size limit: run_tiled handles any K and N by splitting into
+    // HW_ROWS x HW_COLS blocks and accumulating partial sums.
     const int8_t* A_i8 = static_cast<const int8_t*>(A_raw);
     const int8_t* B_i8 = static_cast<const int8_t*>(B_raw);
     int32_t*      C_i32 = static_cast<int32_t*>(C_raw);
 
-    // Helper lambda: run one 2D slice (total_M rows of A, fixed B) through the
-    // systolic array and accumulate observations.
-    // total_M, K, N are captured from the outer scope; A/B/C are slice pointers.
+    // run_slice: drive the Verilator systolic array for one 2-D tile.
+    // A_sl: [total_M, K_sl], B_sl: [K_sl, N_sl] (contiguous), C_sl: [total_M, N_sl].
+    // K_sl <= HW_ROWS and N_sl <= HW_COLS must hold.
     auto run_slice = [&](const int8_t* A_sl, const int8_t* B_sl, int32_t* C_sl,
-                         int64_t total_M, SimObservations& obs) {
-        obs.M = total_M; obs.K = K; obs.N = N;
+                         int64_t total_M, int64_t K_sl, int64_t N_sl,
+                         SimObservations& obs) {
         obs.hw_rows = HW_ROWS; obs.hw_cols = HW_COLS;
 
         VerilatedContext ctx;
@@ -751,57 +757,106 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         arr.weight_ld = 1;
         for (int r = 0; r < HW_ROWS; ++r)
             for (int c = 0; c < HW_COLS; ++c) {
-                int8_t w = (r < K && c < N) ? B_sl[r * N + c] : 0;
+                int8_t w = (r < K_sl && c < N_sl) ? B_sl[r * N_sl + c] : 0;
                 arr.weight_in[r * HW_COLS + c] = static_cast<uint8_t>(w);
-                if (r < K && c < N) obs.weight_writes++;
+                if (r < K_sl && c < N_sl) obs.weight_writes++;
             }
         tick(); obs.ticks_weight_load++;
         arr.weight_ld = 0;
         tick(); obs.ticks_weight_load++;
 
-        const int64_t total_ticks = total_M + HW_ROWS + N - 2;
+        const int64_t total_ticks = total_M + HW_ROWS + N_sl - 2;
         arr.en = 1;
         for (int64_t t = 0; t < total_ticks; ++t) {
             if (t < total_M) {
                 for (int k = 0; k < HW_ROWS; ++k) {
-                    int8_t a = (k < K) ? A_sl[t * K + k] : 0;
+                    int8_t a = (k < K_sl) ? A_sl[t * K_sl + k] : 0;
                     arr.data_in[k] = static_cast<uint8_t>(a);
-                    if (k < K) obs.activation_writes++;
+                    if (k < K_sl) obs.activation_writes++;
                 }
             } else {
                 for (int k = 0; k < HW_ROWS; ++k) arr.data_in[k] = 0;
             }
             tick(); obs.ticks_streaming++;
 
-            for (int j = 0; j < N; ++j) {
+            for (int j = 0; j < N_sl; ++j) {
                 const int64_t out_row = t - (HW_ROWS + j - 1);
                 if (out_row >= 0 && out_row < total_M) {
-                    C_sl[out_row * N + j] = static_cast<int32_t>(arr.acc_out[j]);
+                    C_sl[out_row * N_sl + j] = static_cast<int32_t>(arr.acc_out[j]);
                     obs.output_reads++;
                 }
             }
         }
     };
 
+    // run_tiled: tile [total_M, K] x [K, N] into HW_ROWS x HW_COLS blocks.
+    // Tiles along K are summed into the output; tiles along N are independent.
+    // For K <= HW_ROWS and N <= HW_COLS this is a single systolic-array pass
+    // (same behaviour as before). For larger matrices it generalises correctly.
+    auto run_tiled = [&](const int8_t* A_base, const int8_t* B_base, int32_t* C_base,
+                         int64_t total_M, SimObservations& obs) {
+        std::fill(C_base, C_base + total_M * N, 0);
+
+        for (int64_t k0 = 0; k0 < K; k0 += HW_ROWS) {
+            const int64_t K_t = std::min((int64_t)HW_ROWS, K - k0);
+            for (int64_t n0 = 0; n0 < N; n0 += HW_COLS) {
+                const int64_t N_t = std::min((int64_t)HW_COLS, N - n0);
+
+                // Pack A tile [total_M, K_t] (rows are strided by K in A_base)
+                std::vector<int8_t> A_tile(total_M * K_t);
+                for (int64_t m = 0; m < total_M; ++m)
+                    for (int64_t k = 0; k < K_t; ++k)
+                        A_tile[m * K_t + k] = A_base[m * K + k0 + k];
+
+                // Pack B tile [K_t, N_t]
+                std::vector<int8_t> B_tile(K_t * N_t);
+                for (int64_t k = 0; k < K_t; ++k)
+                    for (int64_t n = 0; n < N_t; ++n)
+                        B_tile[k * N_t + n] = B_base[(k0 + k) * N + n0 + n];
+
+                // Partial output [total_M, N_t]
+                std::vector<int32_t> C_tile(total_M * N_t, 0);
+
+                SimObservations tile_obs{};
+                run_slice(A_tile.data(), B_tile.data(), C_tile.data(),
+                          total_M, K_t, N_t, tile_obs);
+
+                // Accumulate tile into output (K tiles sum; N tiles are disjoint)
+                for (int64_t m = 0; m < total_M; ++m)
+                    for (int64_t n = 0; n < N_t; ++n)
+                        C_base[m * N + n0 + n] += C_tile[m * N_t + n];
+
+                obs.ticks_total       += tile_obs.ticks_total;
+                obs.ticks_reset       += tile_obs.ticks_reset;
+                obs.ticks_weight_load += tile_obs.ticks_weight_load;
+                obs.ticks_streaming   += tile_obs.ticks_streaming;
+                obs.weight_writes     += tile_obs.weight_writes;
+                obs.activation_writes += tile_obs.activation_writes;
+                obs.output_reads      += tile_obs.output_reads;
+            }
+        }
+        obs.M = total_M; obs.K = K; obs.N = N;
+        obs.hw_rows = HW_ROWS; obs.hw_cols = HW_COLS;
+    };
+
     SimObservations obs{};
 
     if (batch_B == 1) {
         // Common transformer case: shared weights. Flatten batch_A into M so
-        // weights are loaded once and all activation rows stream together.
-        run_slice(A_i8, B_i8, C_i32, batch_A * M, obs);
+        // weights are loaded once per tile and all activation rows stream together.
+        run_tiled(A_i8, B_i8, C_i32, batch_A * M, obs);
     } else {
-        // Batched weights: run one systolic-array pass per batch, reload weights.
+        // Batched weights: run one tiled pass per batch, reloading weights each time.
         for (int64_t b = 0; b < batch_A; ++b) {
             SimObservations obs_b{};
-            run_slice(A_i8 + b * M * K, B_i8 + b * K * N, C_i32 + b * M * N, M, obs_b);
-            // Accumulate ticks/counters so perf reflects the full computation.
-            obs.ticks_total        += obs_b.ticks_total;
-            obs.ticks_reset        += obs_b.ticks_reset;
-            obs.ticks_weight_load  += obs_b.ticks_weight_load;
-            obs.ticks_streaming    += obs_b.ticks_streaming;
-            obs.weight_writes      += obs_b.weight_writes;
-            obs.activation_writes  += obs_b.activation_writes;
-            obs.output_reads       += obs_b.output_reads;
+            run_tiled(A_i8 + b * M * K, B_i8 + b * K * N, C_i32 + b * M * N, M, obs_b);
+            obs.ticks_total       += obs_b.ticks_total;
+            obs.ticks_reset       += obs_b.ticks_reset;
+            obs.ticks_weight_load += obs_b.ticks_weight_load;
+            obs.ticks_streaming   += obs_b.ticks_streaming;
+            obs.weight_writes     += obs_b.weight_writes;
+            obs.activation_writes += obs_b.activation_writes;
+            obs.output_reads      += obs_b.output_reads;
         }
         obs.M = batch_A * M; obs.K = K; obs.N = N;
         obs.hw_rows = HW_ROWS; obs.hw_cols = HW_COLS;

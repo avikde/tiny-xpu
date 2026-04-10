@@ -9,3 +9,5 @@ scripts/*.onnx
 .cache
 scripts/*.png
 .DS_Store
+bert-tiny-float
+bert-tiny-int8
