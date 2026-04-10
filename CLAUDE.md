@@ -19,6 +19,17 @@ SystemVerilog systolic array (weight-stationary) with a C++ ONNX Execution Provi
 | `scripts/matmul.py` | Generates `matmul_integer_?x?.onnx` test models |
 | `scripts/run_matmul.py` | End-to-end test: ONNX model → TinyXPU EP → verify vs NumPy |
 
+## Python Environment
+
+All Python scripts require the `.venv` virtualenv. Always activate it before running scripts or tests:
+
+```sh
+source .venv/bin/activate
+python scripts/matmul.py   # or any other script
+```
+
+**For Claude:** When searching for files or code, skip `.venv/`, `test/sim_build/`, `test/sim_build_array/`, and `build/` — these are generated/dependency directories. Always run Python via the activated venv, not the system `python3.13` directly.
+
 ## Build
 
 ```sh

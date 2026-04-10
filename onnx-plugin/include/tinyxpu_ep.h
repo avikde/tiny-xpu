@@ -190,7 +190,7 @@ private:
 // ============================================================================
 class SampleNodeComputeInfo {
 public:
-    SampleNodeComputeInfo(const ApiPtrs& apis);
+    SampleNodeComputeInfo(const ApiPtrs& apis, std::string op_type_str, bool transB_flag = false);
 
     OrtNodeComputeInfo* GetOrtComputeInfo() { return &compute_info_; }
 
@@ -198,6 +198,8 @@ public:
 
     const OrtApi* ort_api;
     const OrtEpApi* ep_api;
+    std::string op_type;  // "MatMulInteger", "MatMul", or "Gemm"
+    bool transB;          // Gemm only: inferred from B's shape in CompileImpl
 
 private:
     static OrtStatus* ORT_API_CALL CreateStateImpl(
