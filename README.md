@@ -1,209 +1,191 @@
 # tiny-xpu
 
-## Project goal
+A modular SystemVerilog systolic array with an ONNX Execution Provider, targeting FPGA deployment and architectural exploration.
 
-While there are other projects building up small (~2x2) TPU-inspired designs (see related projects below), this project has a salient combination of goals:
+**Goals:** Non-rectangular systolic architectures · ONNX EP software interface · Performance counters for architectural tradeoff analysis · FPGA deployment support
 
-- Modular SystemVerilog setup to support non-rectangular systolic architectures
-- Easy software interface via ONNX EP and maybe others
-- Scaffolding to evaluate architectural tradeoffs, include performance counters
-- Support for FPGA deployment
+## Setup
 
-## Setup, build, and test
-
-### Prereqs for WSL or Linux (Debian/Ubuntu)
+### Linux (Debian/Ubuntu)
 
 ```sh
-sudo apt install iverilog   # Icarus Verilog for simulation
-sudo apt install verilator  # Compile SV -> C++ for EP linkage
-sudo apt install yosys      # optional, Yosys for synthesis (or [build from source](https://github.com/YosysHQ/yosys) for the latest version)
+sudo apt install iverilog verilator yosys
 ```
 
-Install pre-built onnxruntime (check https://github.com/microsoft/onnxruntime/releases) -- this is used to build the ONNX EP C++ library
-
+Install ONNX Runtime:
 ```bash
 sudo mkdir -p /opt/onnxruntime
-cd /tmp
-wget https://github.com/microsoft/onnxruntime/releases/download/v1.24.2/onnxruntime-linux-x64-1.24.2.tgz
-sudo tar -xzf onnxruntime-linux-x64-1.24.2.tgz -C /opt/onnxruntime --strip-components=1
+wget -P /tmp https://github.com/microsoft/onnxruntime/releases/download/v1.24.2/onnxruntime-linux-x64-1.24.2.tgz
+sudo tar -xzf /tmp/onnxruntime-linux-x64-1.24.2.tgz -C /opt/onnxruntime --strip-components=1
+echo 'export LD_LIBRARY_PATH=/opt/onnxruntime/lib:$LD_LIBRARY_PATH' >> ~/.bashrc && source ~/.bashrc
 ```
 
-Add the ONNX Runtime library to your library path:
-
-```bash
-echo 'export LD_LIBRARY_PATH=/opt/onnxruntime/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-source ~/.bashrc
-```
-
-Set up a venv for python packages:
-
-```sh
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### Prereqs for Mac (Homebrew)
+### Mac (Homebrew)
 
 ```sh
 brew install iverilog verilator yosys cmake
+brew install python@3.13  # open new terminal after
 ```
 
-Install pre-built onnxruntime
-
+Install ONNX Runtime:
 ```bash
 sudo mkdir -p /opt/onnxruntime
-cd /tmp
-curl -OL https://github.com/microsoft/onnxruntime/releases/download/v1.24.2/onnxruntime-osx-arm64-1.24.2.tgz
-sudo tar -xzf onnxruntime-osx-arm64-1.24.2.tgz -C /opt/onnxruntime --strip-components=1
+curl -OL --output-dir /tmp https://github.com/microsoft/onnxruntime/releases/download/v1.24.2/onnxruntime-osx-arm64-1.24.2.tgz
+sudo tar -xzf /tmp/onnxruntime-osx-arm64-1.24.2.tgz -C /opt/onnxruntime --strip-components=1
+echo 'export DYLD_LIBRARY_PATH=/opt/onnxruntime/lib:$DYLD_LIBRARY_PATH' >> ~/.zshrc && source ~/.zshrc
 ```
 
-Add the ONNX Runtime library to your library path:
-
-```bash
-echo 'export DYLD_LIBRARY_PATH=/opt/onnxruntime/lib:$DYLD_LIBRARY_PATH' >> ~/.zshrc
-source ~/.zshrc
-```
-
-Set up a venv for python packages:
+### Python packages
 
 ```sh
-brew install python@3.13 # open a new terminal after this
-python3.13 -m venv .venv
-source .venv/bin/activate
+python3.13 -m venv .venv && source .venv/bin/activate
+pip install matplotlib cocotb onnxruntime==1.24.2 onnx torch torchvision
 ```
 
-### Install Python packages
+## Build and Test
 
-```bash
-pip install matplotlib
-# Python tool for more powerful SystemVerilog testing
-pip install cocotb
-# Run ONNX models (matching onnxruntime version to the downloaded release)
-pip install onnxruntime==1.24.2 onnx
-```
-
-### Build
-
-```shell
+```sh
 mkdir -p build && cd build
-cmake .. -DSIM=ON
+cmake .. -DSIM=ON   # SIM=ON links Verilator into the ONNX EP
 make -j
+ctest --verbose     # waveforms written to test/sim_build/*.fst
 ```
 
-Important flags:
-- `-DSIM=ON` - link Verilator into the ONNX EP so that it executes verilator simulation. When off, it will attempt to use hardware when implemented.
+Key CMake flags:
+- `-DSIM=ON` — use Verilator simulation backend (required for software runs)
+- `-DSIM_ROWS=N -DSIM_COLS=N` — override array size (default **64×64**)
 
-### Test and view waveforms (optional)
+Install the [Surfer](https://marketplace.visualstudio.com/items?itemName=surfer-project.surfer) VSCode extension to view `.fst` waveforms.
 
-- Install the [Surfer waveform viewer](https://marketplace.visualstudio.com/items?itemName=surfer-project.surfer) VSCode extension for viewing `.vcd` waveform files
+## Run scripts
 
-```shell
-cd build && ctest --verbose
+```sh
+source .venv/bin/activate
+
+python scripts/matmul.py          # generates matmul_integer_?x?.onnx
+python scripts/run_matmul.py      # 2-D MatMulInteger via Verilator, verifies vs NumPy
+python scripts/test_ops.py        # batched MatMulInteger + Gemm tests
 ```
 
-Tests produce waveform files (`*.fst`) in `test/sim_build/`. Open them in VSCode with the Surfer extension to inspect signals.
+## Systolic Array Architecture
 
-## Run the matmul ONNX model with tiny-xpu
+A `ROWS × COLS` PE grid. Dataflow is **weight-stationary**: weights load once, then activations stream east (→) while partial sums cascade south (↓).
 
-The end-to-end flow is: generate an ONNX model → run it through `onnxruntime`
-with the TinyXPU execution provider, which dispatches `MatMulInteger` to the
-Verilator simulation of the systolic array.
+**Ports of `array.sv`:**
+- `data_in[ROWS]` — one int8 activation per row per cycle (internally skewed)
+- `weight_in[ROWS*COLS]`, `weight_ld` — load all weights in one cycle
+- `acc_out[COLS]` — raw int32 result per column (no de-skew)
+- `relu_en` — clamp negative `acc_out` values to zero (combinational)
+- `requant_en`, `bias_in[COLS]`, `M0`, `rshift`, `zero_pt` — drive the requantization stage
+- `q_out[COLS]` — int8 requantized output (valid when `requant_en=1`)
 
-**Step 1 — build** (see above, must use `-DSIM=ON`).
-
-**Step 2 — generate the ONNX model:**
-
-```bash
-cd scripts
-python3 matmul.py # writes matmul_integer_?x?.onnx
-```
-
-The models contain a single `MatMulInteger` node:
-- `X (int8, [M, 4])`
-- `W (int8, [4, 4])`
-- `Y (int32, [M, 4]) = MatMulInteger(X, W)`
-
-**Step 3 — run with the TinyXPU EP:**
-
-```shell
-python3 run_matmul.py
-```
-
-The script registers the plugin EP, loads the model, feeds a 4×4 `int8`
-input, verifies the `int32` result against a NumPy reference, and prints
-`PASS` on success.  It replaces the old `onnx-plugin/test/test_tinyxpu_ep.py`
-development harness.
-
-## Systolic array implementation
-
-The systolic array is a `ROWS × COLS` grid of processing elements (PEs) connected in a mesh. Each PE performs one multiply-accumulate per cycle. The array size is set by `ROWS` and `COLS` parameters, overridable at elaboration time (e.g. via Verilator's `-GROWS=N -GCOLS=N`).
-
-Current dataflow is **weight-stationary**: weights are loaded once into the PE grid, then activations stream east (→) through each row while partial sums cascade south (↓) through each column, accumulating as they go. This maximises weight reuse — each weight participates in every row of the output tile without being reloaded.
-
-Input and output ports of `array.sv`:
-- `data_in[ROWS]` — one int8 activation per row, presented sequentially (one output row per streaming cycle); internal skew registers stagger them automatically
-- `weight_in[ROWS*COLS]`, `weight_ld` — load all PE weights in one cycle before streaming begins
-- `acc_out[COLS]` — one int32 result per column, de-skewed so all columns are valid at the same cycle
-
-> **Note on configurable dataflow:** It is feasible to add a `DATAFLOW` parameter (weight-stationary vs output-stationary) switchable via a CMake option that passes `-GDATAFLOW=0/1` to Verilator. However, the two modes differ enough in their weight-loading interface (`weight_in[ROWS*COLS]` broadcast vs `weight_in[COLS]` streaming) that a clean unified port is awkward in SV. The most practical approach would be separate `array_ws.sv` / `array_os.sv` files, selected by the CMake `ARRAY_DATAFLOW` option, sharing a common `pe.sv` modified with a `generate if` for the accumulation logic.
+**Input skewing:** Row `k` receives its activation `k` cycles later than row 0. For M output rows, total streaming ticks = `M + ROWS + COLS − 1` instead of `M × (ROWS + COLS)`, giving near-100% MAC utilization as M grows.
 
 ### PE (`pe.sv`)
 
-Processing Element (PE) for systolic array, named as in Kung (1982)
-
-- Performs multiply-accumulate: `acc += weight * data_in`
-- Passes data through to neighboring PEs via `data_out`
-- The PE does `int8 × int8 → int32`, then `int32 + int32 → int32`
-- `int8×int8→int32` is the standard choice (used by [Google's TPUs](https://cloud.google.com/blog/products/compute/accurate-quantized-training-aqt-for-tpu-v5e), [Arm NEON `sdot`](https://developer.arm.com/architectures/instruction-sets/intrinsics/vdot_s32), etc.)
-
-In a systolic array, there are two distinct phases:
-
-1. Weight loading phase (`weight_ld=1, en=0`): Before computation begins, you load each PE with its weight from the weight matrix. In a 2x2 systolic array doing `C = A × B`, each PE gets one element of B. This happens once per matrix multiply (or once per tile, for larger matrices).
-2. Compute phase (`weight_ld=0, en=1`): The weights stay "stationary" (this is the weight-stationary dataflow). Input activations stream through via data_in/data_out, and partial sums accumulate via acc_in/acc_out. The weights don't change during this phase.
-
-So the typical sequence is:
-
-- Load weights for all PEs (a few cycles with `weight_ld=1`)
-- Stream many inputs through with weights held fixed (`en=1, weight_ld=0`)
-- When you need new weights (next layer, next tile), load again
-
-Data flows east (→), partial sums flow south (↓) — this is the standard output-stationary / weight-stationary systolic layout from Kung (1982).
-
 ```
-        weight_ld
-            │
-            │  en
-            ▼  ▼
-         ┌──────────┐   
-         │    PE    ├──► data_out
-         │          │
-         │  weight  │
-         │  (reg)   │
-data_in─►│          │
-         │  ×  +    │
-acc_in ──►          ├──► acc_out
-         └──────────┘
+         weight_ld
+             │  en
+             ▼  ▼
+          ┌──────────┐
+          │    PE    ├──► data_out
+          │  weight  │
+data_in──►│  (reg)   │
+          │  × + acc │
+acc_in ──►│          ├──► acc_out
+          └──────────┘
 ```
 
-### Input skewing
+- Phase 1 (`weight_ld=1, en=0`): latch weight into PE register
+- Phase 2 (`weight_ld=0, en=1`): stream activations, accumulate partial sums
+- `int8 × int8 → int32`, then `int32 + int32 → int32`
 
-The standard way to fully utilize a weight-stationary systolic array is **input skewing**: PE row `k` receives its activation one cycle later than PE row `k-1`. For a 4×4 array computing `C = A × B` with M output rows, the driver presents:
+### Requantization stage (`requant.sv`)
+
+A COLS-wide combinational output stage that converts the int32 accumulator directly to int8, so the next layer can consume it without any float dequantization.
 
 ```
-Cycle:   0      1      2      3      4     ...   M+2
-Row 0: a00    a10    a20    a30    ...
-Row 1:  0     a01    a11    a21    a31    ...
-Row 2:  0      0     a02    a12    a22    ...
-Row 3:  0      0      0     a03    a13    ...
+acc_int32 ──► + bias ──► × M0 (63-bit) ──► >>> rshift ──► + zero_pt ──► sat8 ──► [ReLU] ──► q_int8
 ```
 
-With skewing, M output rows flow through the pipeline in `M + (ROWS+COLS−1)` total streaming ticks instead of `M × (ROWS+COLS)`, so MAC efficiency approaches 100% as M grows (weight reuse AND compute utilisation both improve). Without skewing the current driver pays the full pipeline fill/drain cost per row, capping MAC efficiency at 12.5% regardless of M.
+The combined scale `S = a_scale × w_scale / y_scale` is pre-computed by the EP and encoded as a fixed-point multiplier `M0 = round(S × 2³¹)` with `rshift = 31`. This is the standard fixed-point requantization used by integer-only NPUs (TFLite, ONNX Runtime, Apple Neural Engine, Qualcomm Hexagon).
 
-The skewed input stream must be de-skewed on the output side: `acc_out[j]` for output row `i` is valid at tick `i + ROWS + j`, not all at the same tick.
+## Running a Real Model: QuickDraw Sketch Classifier
 
-## Related projects
+`scripts/train_quickdraw.py` downloads a subset of the [Google QuickDraw](https://github.com/googlecreativelab/quickdraw-dataset) dataset (10 sketch categories, 28×28 bitmaps), applies static post-training quantization, and exports a fully-integer ONNX model. `scripts/run_quickdraw.py` runs it end-to-end through the TinyXPU EP.
 
-There are a number of "tiny TPU"-type projects, due to the current popularity of TPUs and LLMs.
+### Network and array co-design
 
-- [tiny-tpu-v2/tiny-tpu](https://github.com/tiny-tpu-v2/tiny-tpu/tree/main) - 2x2 matmul + ReLU to solve XOR problem
-- [Alanma23/tinytinyTPU](https://github.com/Alanma23/tinytinyTPU) - 2x2 matmul + ReLU / ReLU6
+The network is sized so that **no layer requires tiling**:
+
+| Dimension | Value |
+|-----------|-------|
+| Input | 28×28 → 8×8 area-average → **64 features** |
+| FC1 | 64 → 64 + ReLU |
+| FC2 | 64 → 32 + ReLU |
+| FC3 | 32 → 10 (logits) |
+| Array size | **64×64** |
+
+All inner dimensions (K ≤ 64, N ≤ 64) fit in one hardware pass — no tiling, no K-accumulation across passes.
+
+### Fully-integer pipeline
+
+Static PTQ (static post-training quantization) produces a `QLinearMatMul` graph where every scale and zero-point is a baked-in constant. The hardware executes each layer as a single fused operation:
+
+```
+int8 activations
+      │
+      ▼
+ Systolic array (int8×int8 → int32 accumulation)
+      │
+      ▼
+ Requant stage: int32 → int8
+   biased  = acc + bias
+   product = biased × M0   (63-bit fixed-point)
+   shifted = product >>> 31
+   q_out   = sat8(shifted + zero_pt)  [+ ReLU if fused]
+      │
+      ▼
+ int8 activations  ──► next layer
+```
+
+There is **no float32 between layers**. `acc_out` (int32) and `q_out` (int8) are both driven by the array in the same clock cycle; the EP reads `q_out` directly.
+
+### What the hardware sees vs what the CPU handles
+
+| Layer | Operator | Handled by |
+|-------|----------|------------|
+| FC1 (64→64) + ReLU | `QLinearMatMul` | **TinyXPU** (systolic array + requant stage) |
+| FC2 (64→32) + ReLU | `QLinearMatMul` | **TinyXPU** (systolic array + requant stage) |
+| FC3 (32→10) | `QLinearMatMul` | **TinyXPU** (systolic array + requant stage) |
+| Output | `ArgMax` / host readout | CPU EP |
+
+### Training and export
+
+```sh
+source .venv/bin/activate
+python scripts/train_quickdraw.py          # downloads data, trains, exports
+```
+
+This produces:
+- `quickdraw.onnx` — float32 model
+- `quickdraw-int8.onnx` — statically quantized (`QLinearMatMul` nodes with embedded scales)
+
+**Static PTQ workflow:**
+1. Train float32 model (15 epochs, Adam, CrossEntropy)
+2. Fuse `Linear + ReLU` pairs
+3. Insert `QuantStub` / `DeQuantStub`, configure per-tensor int8 qconfig
+4. Calibration pass on training set → collect activation statistics
+5. `convert()` → `QLinearMatMul` nodes with constant `a_scale`, `b_scale`, `y_scale`, `y_zero_point`
+
+### Running the classifier
+
+```sh
+source .venv/bin/activate
+python scripts/run_quickdraw.py
+```
+
+## Related Projects
+
+- [tiny-tpu-v2/tiny-tpu](https://github.com/tiny-tpu-v2/tiny-tpu/tree/main) — 2×2 matmul + ReLU
+- [Alanma23/tinytinyTPU](https://github.com/Alanma23/tinytinyTPU) — 2×2 matmul + ReLU/ReLU6

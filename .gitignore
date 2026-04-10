@@ -1,8 +1,8 @@
 SYNTAX: GLOB
 
 build/**
-test/sim_build
-test/sim_build_array
+**/sim_build
+**/sim_build_array
 __pycache__
 scripts/*.onnx
 .venv
