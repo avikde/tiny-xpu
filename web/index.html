@@ -515,6 +515,19 @@ function showOverlay(show) {
 
 // ─── ML Canvas ────────────────────────────────────────────────────────────────
 const CANVAS_SIZE = 300;
+
+function hiDPI(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || canvas.width;
+  const cssH = canvas.clientHeight || canvas.height;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
 const GRID_STEP = 5;
 
 function sineTarget(x) {
@@ -523,7 +536,7 @@ function sineTarget(x) {
 
 function renderML() {
   const canvas = document.getElementById('mlCanvas');
-  const ctx = canvas.getContext('2d');
+  const ctx = hiDPI(canvas);
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
   if (!currentNet) return;
@@ -531,7 +544,7 @@ function renderML() {
   if (state.task === 'sine') {
     renderSine(ctx);
   } else {
-    renderBoundary(ctx);
+    renderBoundary(ctx, canvas);
   }
 
   const params = countParams(state.depth, state.width);
@@ -539,17 +552,19 @@ function renderML() {
   document.getElementById('statLoss').textContent = lastLoss != null ? lastLoss.toFixed(4) : '—';
 }
 
-function renderBoundary(ctx) {
-  const imgData = ctx.createImageData(CANVAS_SIZE, CANVAS_SIZE);
-  for (let py = 0; py < CANVAS_SIZE; py += GRID_STEP) {
-    for (let px = 0; px < CANVAS_SIZE; px += GRID_STEP) {
-      const nx = (px / CANVAS_SIZE) * 2 - 1;
-      const ny = (py / CANVAS_SIZE) * 2 - 1;
+function renderBoundary(ctx, canvas) {
+  const physW = canvas.width, physH = canvas.height;
+  const step = Math.round(GRID_STEP * physW / CANVAS_SIZE);
+  const imgData = ctx.createImageData(physW, physH);
+  for (let py = 0; py < physH; py += step) {
+    for (let px = 0; px < physW; px += step) {
+      const nx = (px / physW) * 2 - 1;
+      const ny = (py / physH) * 2 - 1;
       const p = predict(currentNet, [nx, ny]);
-      const v = Math.round(p * 200); // 0=dark, 200=light
-      for (let dy = 0; dy < GRID_STEP && py + dy < CANVAS_SIZE; dy++) {
-        for (let dx = 0; dx < GRID_STEP && px + dx < CANVAS_SIZE; dx++) {
-          const idx = ((py + dy) * CANVAS_SIZE + (px + dx)) * 4;
+      const v = Math.round(p * 200);
+      for (let dy = 0; dy < step && py + dy < physH; dy++) {
+        for (let dx = 0; dx < step && px + dx < physW; dx++) {
+          const idx = ((py + dy) * physW + (px + dx)) * 4;
           imgData.data[idx] = 15 + v;
           imgData.data[idx + 1] = 15 + v;
           imgData.data[idx + 2] = 20 + v;
@@ -697,8 +712,9 @@ function updateHW() {
 
 function drawRoofline(peakMacs, throughput, ai) {
   const canvas = document.getElementById('rooflineCanvas');
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
+  const cssW = 280, cssH = 160;
+  const ctx = hiDPI(canvas);
+  const W = cssW, H = cssH;
   ctx.clearRect(0, 0, W, H);
 
   const lPad = 42, rPad = 10, tPad = 12, bPad = 28;
