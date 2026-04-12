@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLP Explorer — TinyXPU</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0f1117;
+  color: #e2e8f0;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+h1 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+.subtitle { font-size: 0.85rem; color: #94a3b8; margin-bottom: 16px; }
+
+/* Controls */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  background: #1e2433;
+  border: 1px solid #2d3748;
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  align-items: flex-end;
+}
+.ctrl-group { display: flex; flex-direction: column; gap: 6px; }
+.ctrl-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
+.ctrl-value { font-size: 0.85rem; color: #38bdf8; font-weight: 600; }
+
+input[type=range] {
+  accent-color: #38bdf8;
+  width: 130px;
+  cursor: pointer;
+}
+
+.btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.btn {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid #334155;
+  background: #1a2035;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn.active { background: #0ea5e9; border-color: #0ea5e9; color: #fff; font-weight: 600; }
+.btn:hover:not(.active) { border-color: #64748b; color: #e2e8f0; }
+
+/* Main panels */
+.panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 680px) { .panels { grid-template-columns: 1fr; } }
+
+.panel {
+  background: #1e2433;
+  border: 1px solid #2d3748;
+  border-radius: 10px;
+  padding: 16px;
+}
+.panel-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-title .badge {
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #1d3a5f;
+  color: #38bdf8;
+}
+
+/* ML panel */
+.canvas-wrap {
+  position: relative;
+  display: inline-block;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #2d3748;
+}
+#mlCanvas { display: block; }
+#trainingOverlay {
+  position: absolute; inset: 0;
+  background: rgba(15,17,23,0.7);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.85rem; color: #38bdf8;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+#trainingOverlay.hidden { opacity: 0; }
+
+.stats-row {
+  display: flex;
+  gap: 18px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-val { font-size: 1.05rem; font-weight: 700; color: #f1f5f9; }
+
+/* HW panel */
+.hw-metric { margin-bottom: 14px; }
+.hw-metric-header {
+  display: flex; justify-content: space-between;
+  font-size: 0.8rem; margin-bottom: 5px;
+}
+.hw-metric-name { color: #94a3b8; }
+.hw-metric-val { font-weight: 700; color: #f1f5f9; }
+
+.bar-track {
+  height: 10px;
+  background: #0f1117;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid #2d3748;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.4s ease, background 0.4s;
+}
+
+.layer-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  margin-top: 10px;
+}
+.layer-table th {
+  text-align: left;
+  color: #64748b;
+  font-weight: 500;
+  padding: 3px 6px;
+  border-bottom: 1px solid #2d3748;
+}
+.layer-table td {
+  padding: 3px 6px;
+  color: #cbd5e1;
+  border-bottom: 1px solid #1a2035;
+}
+.layer-table tr:last-child td { border-bottom: none; }
+
+/* Insight callout */
+.insight {
+  background: #1a2a1a;
+  border: 1px solid #2d4a2d;
+  border-left: 3px solid #22c55e;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: #d1fae5;
+}
+.insight strong { color: #4ade80; }
+
+.divider { border: none; border-top: 1px solid #2d3748; margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<h1>MLP Explorer</h1>
+<p class="subtitle">Explore the depth/width tradeoff — ML expressivity vs. TinyXPU hardware efficiency</p>
+
+<div class="controls">
+  <div class="ctrl-group">
+    <span class="ctrl-label">Depth (hidden layers) <span class="ctrl-value" id="depthVal">3</span></span>
+    <input type="range" id="depthSlider" min="1" max="8" value="3" step="1">
+  </div>
+
+  <div class="ctrl-group">
+    <span class="ctrl-label">Width (neurons/layer)</span>
+    <div class="btn-group" id="widthBtns">
+      <button class="btn" data-w="4">4</button>
+      <button class="btn" data-w="8">8</button>
+      <button class="btn active" data-w="16">16</button>
+      <button class="btn" data-w="32">32</button>
+      <button class="btn" data-w="64">64</button>
+      <button class="btn" data-w="128">128</button>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <span class="ctrl-label">Activation</span>
+    <div class="btn-group" id="actBtns">
+      <button class="btn active" data-a="relu">ReLU</button>
+      <button class="btn" data-a="tanh">tanh</button>
+      <button class="btn" data-a="sigmoid">sigmoid</button>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <span class="ctrl-label">Array size</span>
+    <div class="btn-group" id="arrayBtns">
+      <button class="btn" data-r="8" data-c="8">8×8</button>
+      <button class="btn active" data-r="16" data-c="16">16×16</button>
+      <button class="btn" data-r="32" data-c="32">32×32</button>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <span class="ctrl-label">Task</span>
+    <div class="btn-group" id="taskBtns">
+      <button class="btn active" data-t="xor">XOR</button>
+      <button class="btn" data-t="spiral">Spiral</button>
+      <button class="btn" data-t="sine">Sine</button>
+    </div>
+  </div>
+</div>
+
+<div class="panels">
+  <!-- ML Panel -->
+  <div class="panel">
+    <div class="panel-title">ML Expressivity <span class="badge">in-browser training</span></div>
+    <div class="canvas-wrap">
+      <canvas id="mlCanvas" width="300" height="300"></canvas>
+      <div id="trainingOverlay">Training…</div>
+    </div>
+    <div class="stats-row">
+      <div class="stat">
+        <span class="stat-label">Parameters</span>
+        <span class="stat-val" id="statParams">—</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Loss (500 steps)</span>
+        <span class="stat-val" id="statLoss">—</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Steps</span>
+        <span class="stat-val" id="statSteps">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- HW Panel -->
+  <div class="panel">
+    <div class="panel-title">Hardware Efficiency <span class="badge">TinyXPU systolic array</span></div>
+
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">PE Utilization (spatial × temporal)</span>
+        <span class="hw-metric-val" id="hwUtil">—</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="hwUtilBar" style="width:0%"></div></div>
+    </div>
+
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">Spatial utilization (width / array_cols)</span>
+        <span class="hw-metric-val" id="hwSpatial">—</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="hwSpatialBar" style="width:0%"></div></div>
+    </div>
+
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">Temporal utilization (pipeline fill)</span>
+        <span class="hw-metric-val" id="hwTemporal">—</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="hwTemporalBar" style="width:0%"></div></div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">Sequential matmuls (latency proxy)</span>
+        <span class="hw-metric-val" id="hwMatmuls">—</span>
+      </div>
+    </div>
+
+    <table class="layer-table">
+      <thead><tr><th>Layer</th><th>Shape</th><th>Params</th></tr></thead>
+      <tbody id="layerTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Insight callout -->
+<div class="insight" id="insightBox">Adjust the controls above to explore the tradeoff.</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+const state = {
+  depth: 3,
+  width: 16,
+  act: 'relu',
+  arrayRows: 16,
+  arrayCols: 16,
+  task: 'xor',
+};
+
+let trainTimer = null;
+let lastLoss = null;
+let lastSteps = 0;
+
+// ─── Dataset generation ────────────────────────────────────────────────────────
+function genDataset(task, n = 200) {
+  const xs = [], ys = [];
+  const rng = seededRand(42);
+
+  if (task === 'xor') {
+    for (let i = 0; i < n; i++) {
+      const x = rng() * 2 - 1, y = rng() * 2 - 1;
+      xs.push([x + rng() * 0.15, y + rng() * 0.15]);
+      ys.push([(x > 0) === (y > 0) ? 0 : 1]);
+    }
+  } else if (task === 'spiral') {
+    for (let k = 0; k < 2; k++) {
+      for (let i = 0; i < n / 2; i++) {
+        const t = (i / (n / 2)) * 2 * Math.PI * 1.5;
+        const r = 0.1 + 0.8 * (i / (n / 2));
+        const nx = r * Math.cos(t + k * Math.PI) + rng() * 0.05;
+        const ny = r * Math.sin(t + k * Math.PI) + rng() * 0.05;
+        xs.push([nx, ny]);
+        ys.push([k]);
+      }
+    }
+  } else { // sine — 1D regression, use x as input, y=0 as dummy 2nd
+    for (let i = 0; i < n; i++) {
+      const x = rng() * 2 - 1;
+      xs.push([x, 0]);
+      ys.push([Math.sin(2 * Math.PI * x) * 0.5 + 0.5]);
+    }
+  }
+  return { xs, ys };
+}
+
+function seededRand(seed) {
+  let s = seed;
+  return function () {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+}
+
+// ─── Neural net ───────────────────────────────────────────────────────────────
+function makeNet(inDim, width, depth, outDim) {
+  const layers = [];
+  const sizes = [inDim, ...Array(depth).fill(width), outDim];
+  const rng = seededRand(7);
+  for (let i = 0; i + 1 < sizes.length; i++) {
+    const fan_in = sizes[i], fan_out = sizes[i + 1];
+    const scale = Math.sqrt(2 / fan_in);
+    const W = Array.from({ length: fan_out }, () =>
+      Array.from({ length: fan_in }, () => (rng() * 2 - 1) * scale)
+    );
+    const b = Array(fan_out).fill(0);
+    layers.push({ W, b, fan_in, fan_out });
+  }
+  return layers;
+}
+
+function activation(x, act) {
+  if (act === 'relu') return Math.max(0, x);
+  if (act === 'tanh') return Math.tanh(x);
+  return 1 / (1 + Math.exp(-x)); // sigmoid
+}
+
+function actDeriv(x, act) {
+  if (act === 'relu') return x > 0 ? 1 : 0;
+  if (act === 'tanh') { const t = Math.tanh(x); return 1 - t * t; }
+  const s = 1 / (1 + Math.exp(-x)); return s * (1 - s);
+}
+
+function forward(layers, x, act, isRegression) {
+  const cache = [{ a: x, z: null }];
+  let a = x;
+  for (let li = 0; li < layers.length; li++) {
+    const { W, b } = layers[li];
+    const z = W.map((row, i) => row.reduce((s, w, j) => s + w * a[j], 0) + b[i]);
+    const isLast = li === layers.length - 1;
+    const aNext = isLast
+      ? (isRegression ? z.map(v => 1 / (1 + Math.exp(-v))) : z.map(v => 1 / (1 + Math.exp(-v))))
+      : z.map(v => activation(v, act));
+    cache.push({ a: aNext, z });
+    a = aNext;
+  }
+  return cache;
+}
+
+function loss(pred, target) {
+  // binary cross-entropy (works for regression too since targets ∈ [0,1])
+  const eps = 1e-7;
+  return pred.reduce((s, p, i) => {
+    const t = target[i];
+    return s - (t * Math.log(p + eps) + (1 - t) * Math.log(1 - p + eps));
+  }, 0) / pred.length;
+}
+
+function backward(layers, cache, target, act, lr = 0.05) {
+  const L = layers.length;
+  // output delta
+  let delta = cache[L].a.map((p, i) => p - target[i]);
+
+  for (let li = L - 1; li >= 0; li--) {
+    const { W, b, fan_in } = layers[li];
+    const aIn = cache[li].a;
+
+    // weight + bias update
+    for (let i = 0; i < delta.length; i++) {
+      for (let j = 0; j < fan_in; j++) {
+        W[i][j] -= lr * delta[i] * aIn[j];
+      }
+      b[i] -= lr * delta[i];
+    }
+
+    if (li === 0) break;
+
+    // propagate delta
+    const newDelta = Array(fan_in).fill(0);
+    for (let j = 0; j < fan_in; j++) {
+      for (let i = 0; i < delta.length; i++) {
+        newDelta[j] += W[i][j] * delta[i];
+      }
+      newDelta[j] *= actDeriv(cache[li].z[j], act);
+    }
+    delta = newDelta;
+  }
+}
+
+function predict(layers, x, act) {
+  const cache = forward(layers, x, act, false);
+  return cache[cache.length - 1].a[0];
+}
+
+// ─── Training loop ────────────────────────────────────────────────────────────
+let currentNet = null;
+let dataset = null;
+let trainStep = 0;
+const TOTAL_STEPS = 500;
+const STEPS_PER_TICK = 25;
+
+function startTraining() {
+  if (trainTimer) clearTimeout(trainTimer);
+  showOverlay(true);
+
+  dataset = genDataset(state.task);
+  const inDim = 2, outDim = 1;
+  currentNet = makeNet(inDim, state.width, state.depth, outDim);
+  trainStep = 0;
+  lastLoss = null;
+  document.getElementById('statSteps').textContent = '0';
+
+  trainTick();
+}
+
+function trainTick() {
+  if (!currentNet || !dataset) return;
+  const { xs, ys } = dataset;
+  let totalLoss = 0;
+  const end = Math.min(trainStep + STEPS_PER_TICK, TOTAL_STEPS);
+
+  for (let step = trainStep; step < end; step++) {
+    for (let i = 0; i < xs.length; i++) {
+      const cache = forward(currentNet, xs[i], state.act, false);
+      const pred = cache[cache.length - 1].a;
+      totalLoss += loss(pred, ys[i]);
+      backward(currentNet, cache, ys[i], state.act, 0.01);
+    }
+  }
+  trainStep = end;
+  lastLoss = totalLoss / (STEPS_PER_TICK * xs.length);
+  lastSteps = trainStep;
+
+  document.getElementById('statSteps').textContent = trainStep;
+
+  if (trainStep < TOTAL_STEPS) {
+    trainTimer = setTimeout(trainTick, 0);
+  } else {
+    showOverlay(false);
+    renderML();
+    updateHW();
+    updateInsight();
+  }
+}
+
+function showOverlay(show) {
+  const el = document.getElementById('trainingOverlay');
+  el.classList.toggle('hidden', !show);
+}
+
+// ─── ML Canvas ────────────────────────────────────────────────────────────────
+const CANVAS_SIZE = 300;
+const GRID_STEP = 5;
+
+function renderML() {
+  const canvas = document.getElementById('mlCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+  if (!currentNet) return;
+
+  // Decision boundary
+  const imgData = ctx.createImageData(CANVAS_SIZE, CANVAS_SIZE);
+  for (let py = 0; py < CANVAS_SIZE; py += GRID_STEP) {
+    for (let px = 0; px < CANVAS_SIZE; px += GRID_STEP) {
+      const nx = (px / CANVAS_SIZE) * 2 - 1;
+      const ny = (py / CANVAS_SIZE) * 2 - 1;
+      const p = predict(currentNet, [nx, ny], state.act);
+      const r = state.task === 'sine' ? 0 : Math.round(p * 220);
+      const b = state.task === 'sine' ? Math.round(p * 220) : 0;
+      const g = state.task === 'sine' ? Math.round(p * 150) : Math.round((1 - p) * 180);
+
+      for (let dy = 0; dy < GRID_STEP && py + dy < CANVAS_SIZE; dy++) {
+        for (let dx = 0; dx < GRID_STEP && px + dx < CANVAS_SIZE; dx++) {
+          const idx = ((py + dy) * CANVAS_SIZE + (px + dx)) * 4;
+          imgData.data[idx] = 30 + r;
+          imgData.data[idx + 1] = 20 + g;
+          imgData.data[idx + 2] = 30 + b;
+          imgData.data[idx + 3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Training points
+  const { xs, ys } = dataset;
+  for (let i = 0; i < xs.length; i++) {
+    const px = (xs[i][0] + 1) / 2 * CANVAS_SIZE;
+    const py = (xs[i][1] + 1) / 2 * CANVAS_SIZE;
+    ctx.beginPath();
+    ctx.arc(px, py, 2.5, 0, 2 * Math.PI);
+    ctx.fillStyle = ys[i][0] > 0.5 ? '#f97316' : '#38bdf8';
+    ctx.fill();
+  }
+
+  // Stats
+  const params = countParams(state.depth, state.width);
+  document.getElementById('statParams').textContent = params.toLocaleString();
+  document.getElementById('statLoss').textContent = lastLoss != null ? lastLoss.toFixed(4) : '—';
+}
+
+function countParams(depth, width) {
+  // 2→width (first), width→width (depth-1), width→1 (last)
+  if (depth === 0) return width + 1; // edge case
+  return (2 * width + width) + (depth - 1) * (width * width + width) + (width * 1 + 1);
+}
+
+// ─── HW Panel ────────────────────────────────────────────────────────────────
+const BATCH = 64;
+
+function hwMetrics() {
+  const { width, depth, arrayRows, arrayCols } = state;
+  const M = BATCH, K = width, N = width;
+  const spatial = Math.min(width, arrayCols) / arrayCols;
+  const temporal = M / (M + arrayRows + N - 2);
+  const overall = spatial * temporal;
+  return { spatial, temporal, overall, seqMatmuls: depth };
+}
+
+function barColor(v) {
+  if (v >= 0.7) return '#22c55e';
+  if (v >= 0.4) return '#eab308';
+  return '#ef4444';
+}
+
+function setBar(barId, valId, v) {
+  const pct = (v * 100).toFixed(1);
+  document.getElementById(barId).style.width = pct + '%';
+  document.getElementById(barId).style.background = barColor(v);
+  document.getElementById(valId).textContent = pct + '%';
+}
+
+function updateHW() {
+  const { spatial, temporal, overall, seqMatmuls } = hwMetrics();
+  setBar('hwUtilBar', 'hwUtil', overall);
+  setBar('hwSpatialBar', 'hwSpatial', spatial);
+  setBar('hwTemporalBar', 'hwTemporal', temporal);
+  document.getElementById('hwMatmuls').textContent = seqMatmuls;
+
+  // Layer table
+  const tbody = document.getElementById('layerTable');
+  tbody.innerHTML = '';
+  const { depth, width } = state;
+  const shapes = [[2, width], ...Array(depth - 1).fill([width, width]), [width, 1]];
+  shapes.forEach(([inn, out], i) => {
+    const p = inn * out + out;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>L${i + 1}</td><td>${inn}→${out}</td><td>${p.toLocaleString()}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ─── Insight callout ──────────────────────────────────────────────────────────
+function updateInsight() {
+  const { depth, width, arrayRows, arrayCols } = state;
+  const { overall, seqMatmuls } = hwMetrics();
+  const params = countParams(depth, width);
+  const lossStr = lastLoss != null ? lastLoss.toFixed(4) : '?';
+
+  const profile = depth >= 4 ? 'deep-narrow' : 'shallow-wide';
+  const utilColor = overall >= 0.7 ? 'good' : overall >= 0.4 ? 'moderate' : 'poor';
+  const utilLabel = { good: '✓ good', moderate: '~ moderate', poor: '✗ poor' }[utilColor];
+
+  // Suggest twin
+  let twinMsg = '';
+  if (depth >= 4) {
+    const twinDepth = 2;
+    // find width with similar param count
+    let bestW = 4, bestDiff = Infinity;
+    for (const w of [4, 8, 16, 32, 64, 128]) {
+      const diff = Math.abs(countParams(twinDepth, w) - params);
+      if (diff < bestDiff) { bestDiff = diff; bestW = w; }
+    }
+    const twinSpatial = Math.min(bestW, arrayCols) / arrayCols;
+    const twinUtil = twinSpatial * (BATCH / (BATCH + arrayRows + bestW - 2));
+    twinMsg = ` A <strong>2-layer width-${bestW}</strong> network has ~${countParams(twinDepth, bestW).toLocaleString()} params and runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with only 2 sequential matmuls.`;
+  } else {
+    const twinDepth = 6;
+    let bestW = 4, bestDiff = Infinity;
+    for (const w of [4, 8, 16, 32, 64, 128]) {
+      const diff = Math.abs(countParams(twinDepth, w) - params);
+      if (diff < bestDiff) { bestDiff = diff; bestW = w; }
+    }
+    const twinSpatial = Math.min(bestW, arrayCols) / arrayCols;
+    const twinUtil = twinSpatial * (BATCH / (BATCH + arrayRows + bestW - 2));
+    twinMsg = ` A <strong>6-layer width-${bestW}</strong> network has ~${countParams(twinDepth, bestW).toLocaleString()} params and runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with 6 sequential matmuls.`;
+  }
+
+  document.getElementById('insightBox').innerHTML =
+    `This <strong>${profile}</strong> network (${params.toLocaleString()} params, ${depth} layers) achieves loss <strong>${lossStr}</strong> and runs at ` +
+    `<strong>${(overall * 100).toFixed(0)}% utilization</strong> on the ${arrayRows}×${arrayCols} array — ${utilLabel}. ` +
+    `It requires <strong>${seqMatmuls} sequential matmul${seqMatmuls > 1 ? 's' : ''}</strong> per inference.` +
+    twinMsg;
+}
+
+// ─── Control wiring ───────────────────────────────────────────────────────────
+function activateBtn(groupId, key, val) {
+  document.querySelectorAll(`#${groupId} .btn`).forEach(b => {
+    b.classList.toggle('active', b.dataset[key] == val);
+  });
+}
+
+document.getElementById('depthSlider').addEventListener('input', e => {
+  state.depth = +e.target.value;
+  document.getElementById('depthVal').textContent = state.depth;
+  scheduleRetrain();
+});
+
+document.getElementById('widthBtns').addEventListener('click', e => {
+  const b = e.target.closest('.btn');
+  if (!b) return;
+  state.width = +b.dataset.w;
+  activateBtn('widthBtns', 'w', state.width);
+  scheduleRetrain();
+});
+
+document.getElementById('actBtns').addEventListener('click', e => {
+  const b = e.target.closest('.btn');
+  if (!b) return;
+  state.act = b.dataset.a;
+  activateBtn('actBtns', 'a', state.act);
+  scheduleRetrain();
+});
+
+document.getElementById('arrayBtns').addEventListener('click', e => {
+  const b = e.target.closest('.btn');
+  if (!b) return;
+  state.arrayRows = +b.dataset.r;
+  state.arrayCols = +b.dataset.c;
+  activateBtn('arrayBtns', 'r', state.arrayRows);
+  updateHW();
+  updateInsight();
+});
+
+document.getElementById('taskBtns').addEventListener('click', e => {
+  const b = e.target.closest('.btn');
+  if (!b) return;
+  state.task = b.dataset.t;
+  activateBtn('taskBtns', 't', state.task);
+  scheduleRetrain();
+});
+
+let retrainTimeout = null;
+function scheduleRetrain() {
+  if (retrainTimeout) clearTimeout(retrainTimeout);
+  retrainTimeout = setTimeout(startTraining, 80);
+}
+
+// Initial render
+startTraining();
+</script>
+</body>
+</html>
