@@ -105,7 +105,7 @@ function hwMetrics() {
   const temporal = M / (M + arrayRows + N - 2);
   const overall = spatial * temporal;
   const throughput = overall * peakMacs;
-  const latencyPerLayer = M + arrayRows + N - 2; // pipeline fill cycles
+  const latencyPerLayer = arrayRows + N - 2; // pipeline latency: first in → last out
   const totalLatency = depth * latencyPerLayer;
   const ai = (M * N) / (N + M); // MACs/byte, weight-stationary hidden layer
   return { spatial, temporal, overall, peakMacs, throughput, totalLatency, ai, seqMatmuls: depth };
