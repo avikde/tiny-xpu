@@ -1,3 +1,8 @@
+// ─── Target functions ─────────────────────────────────────────────────────────
+function sineTarget(x) {
+  return (Math.sin(4.4 * x) * 0.4 + Math.cos(6.3 * x)) * 0.4 + 0.5;
+}
+
 // ─── Dataset generation ────────────────────────────────────────────────────────
 function genDataset(task, n = 200) {
   const xs = [], ys = [];
@@ -14,11 +19,11 @@ function genDataset(task, n = 200) {
         ys.push([k]);
       }
     }
-  } else { // sine — 1D regression: y = sin(2πx) + sin(13 * x), normalized to [0,1]
+  } else { // sine — 1D regression
     for (let i = 0; i < n; i++) {
       const x = rng() * 2 - 1;
       xs.push([x]);
-      ys.push([(Math.sin(2 * Math.PI * x) + Math.sin(13 * x)) / 4 + 0.5]);
+      ys.push([sineTarget(x)]);
     }
   }
   return { xs, ys };

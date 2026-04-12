@@ -16,10 +16,6 @@ function hiDPI(canvas) {
 
 const GRID_STEP = 5;
 
-function sineTarget(x) {
-  return (Math.sin(2 * Math.PI * x) + Math.sin(13 * x)) / 4 + 0.5;
-}
-
 function renderML() {
   const canvas = document.getElementById('mlCanvas');
   const ctx = hiDPI(canvas);
