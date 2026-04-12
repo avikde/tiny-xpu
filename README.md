@@ -185,6 +185,34 @@ source .venv/bin/activate
 python scripts/run_quickdraw.py
 ```
 
+## Interactive MLP Explorer
+
+A browser-based tool for exploring the depth/width tradeoff from two perspectives simultaneously: ML expressivity and systolic array efficiency. Hosted at [avikde.github.io/tiny-xpu](https://avikde.github.io/tiny-xpu/).
+
+### How to use
+
+Pick a **task** (spiral classification or sum-of-sines regression), then adjust **depth** (1–8 hidden layers) and **width** (4–128 neurons). The left panel trains a small network in-browser and shows the decision boundary or fitted curve. The right panel shows the hardware profile on a configurable systolic array.
+
+The key experiment: find two configurations with the same parameter count but different depth/width. The ML accuracy will be similar — the hardware profile will not.
+
+### Hardware metrics
+
+| Metric | Formula |
+|--------|---------|
+| Spatial utilization | `min(width, array_cols) / array_cols` |
+| Temporal utilization | `M / (M + ROWS + N − 2)` — pipeline fill, M=64 batch |
+| Throughput | `spatial × temporal × ROWS × COLS` MACs/cycle |
+| Inference latency | `depth × (M + ROWS + N − 2)` cycles |
+| Arithmetic intensity | `M·N / (N + M)` MACs/byte (weight-stationary) |
+
+The roofline diagram shows whether the current configuration is memory-bound or compute-bound given a 16 B/cycle SRAM bandwidth assumption.
+
+### Running locally
+
+```sh
+node web/serve.js   # serves web/ at http://localhost:3000
+```
+
 ## Related Projects
 
 - [tiny-tpu-v2/tiny-tpu](https://github.com/tiny-tpu-v2/tiny-tpu/tree/main) — 2×2 matmul + ReLU
