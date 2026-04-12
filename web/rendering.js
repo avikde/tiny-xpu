@@ -101,7 +101,9 @@ function hwMetrics() {
   const { width, depth, arrayRows, arrayCols } = state;
   const M = BATCH, N = width;
   const peakMacs = arrayRows * arrayCols;
-  const spatial = Math.min(width, arrayCols) / arrayCols;
+  const spatialCols = Math.min(width, arrayCols) / arrayCols;  // N fills columns
+  const spatialRows = Math.min(width, arrayRows) / arrayRows;  // K fills rows
+  const spatial = spatialCols * spatialRows;
   const temporal = M / (M + arrayRows + N - 2);
   const overall = spatial * temporal;
   const throughput = overall * peakMacs;
