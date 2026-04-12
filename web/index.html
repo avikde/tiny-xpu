@@ -202,15 +202,6 @@ input[type=range] {
   </div>
 
   <div class="ctrl-group">
-    <span class="ctrl-label">Activation</span>
-    <div class="btn-group" id="actBtns">
-      <button class="btn active" data-a="relu">ReLU</button>
-      <button class="btn" data-a="tanh">tanh</button>
-      <button class="btn" data-a="sigmoid">sigmoid</button>
-    </div>
-  </div>
-
-  <div class="ctrl-group">
     <span class="ctrl-label">Array size</span>
     <div class="btn-group" id="arrayBtns">
       <button class="btn" data-r="8" data-c="8">8×8</button>
@@ -305,7 +296,6 @@ input[type=range] {
 const state = {
   depth: 3,
   width: 16,
-  act: 'relu',
   arrayRows: 16,
   arrayCols: 16,
   task: 'xor',
@@ -372,19 +362,10 @@ function makeNet(inDim, width, depth, outDim) {
   return layers;
 }
 
-function activation(x, act) {
-  if (act === 'relu') return Math.max(0, x);
-  if (act === 'tanh') return Math.tanh(x);
-  return 1 / (1 + Math.exp(-x)); // sigmoid
-}
+function activation(x) { return Math.max(0, x); }
+function actDeriv(x) { return x > 0 ? 1 : 0; }
 
-function actDeriv(x, act) {
-  if (act === 'relu') return x > 0 ? 1 : 0;
-  if (act === 'tanh') { const t = Math.tanh(x); return 1 - t * t; }
-  const s = 1 / (1 + Math.exp(-x)); return s * (1 - s);
-}
-
-function forward(layers, x, act, isRegression) {
+function forward(layers, x) {
   const cache = [{ a: x, z: null }];
   let a = x;
   for (let li = 0; li < layers.length; li++) {
@@ -392,8 +373,8 @@ function forward(layers, x, act, isRegression) {
     const z = W.map((row, i) => row.reduce((s, w, j) => s + w * a[j], 0) + b[i]);
     const isLast = li === layers.length - 1;
     const aNext = isLast
-      ? (isRegression ? z.map(v => 1 / (1 + Math.exp(-v))) : z.map(v => 1 / (1 + Math.exp(-v))))
-      : z.map(v => activation(v, act));
+      ? z.map(v => 1 / (1 + Math.exp(-v)))  // sigmoid output
+      : z.map(v => activation(v));
     cache.push({ a: aNext, z });
     a = aNext;
   }
@@ -409,7 +390,7 @@ function loss(pred, target) {
   }, 0) / pred.length;
 }
 
-function backward(layers, cache, target, act, lr = 0.05) {
+function backward(layers, cache, target, lr = 0.05) {
   const L = layers.length;
   // output delta
   let delta = cache[L].a.map((p, i) => p - target[i]);
@@ -434,14 +415,14 @@ function backward(layers, cache, target, act, lr = 0.05) {
       for (let i = 0; i < delta.length; i++) {
         newDelta[j] += W[i][j] * delta[i];
       }
-      newDelta[j] *= actDeriv(cache[li].z[j], act);
+      newDelta[j] *= actDeriv(cache[li].z[j]);
     }
     delta = newDelta;
   }
 }
 
-function predict(layers, x, act) {
-  const cache = forward(layers, x, act, false);
+function predict(layers, x) {
+  const cache = forward(layers, x);
   return cache[cache.length - 1].a[0];
 }
 
@@ -474,10 +455,10 @@ function trainTick() {
 
   for (let step = trainStep; step < end; step++) {
     for (let i = 0; i < xs.length; i++) {
-      const cache = forward(currentNet, xs[i], state.act, false);
+      const cache = forward(currentNet, xs[i]);
       const pred = cache[cache.length - 1].a;
       totalLoss += loss(pred, ys[i]);
-      backward(currentNet, cache, ys[i], state.act, 0.01);
+      backward(currentNet, cache, ys[i], 0.01);
     }
   }
   trainStep = end;
@@ -518,7 +499,7 @@ function renderML() {
     for (let px = 0; px < CANVAS_SIZE; px += GRID_STEP) {
       const nx = (px / CANVAS_SIZE) * 2 - 1;
       const ny = (py / CANVAS_SIZE) * 2 - 1;
-      const p = predict(currentNet, [nx, ny], state.act);
+      const p = predict(currentNet, [nx, ny]);
       const r = state.task === 'sine' ? 0 : Math.round(p * 220);
       const b = state.task === 'sine' ? Math.round(p * 220) : 0;
       const g = state.task === 'sine' ? Math.round(p * 150) : Math.round((1 - p) * 180);
@@ -668,13 +649,6 @@ document.getElementById('widthBtns').addEventListener('click', e => {
   scheduleRetrain();
 });
 
-document.getElementById('actBtns').addEventListener('click', e => {
-  const b = e.target.closest('.btn');
-  if (!b) return;
-  state.act = b.dataset.a;
-  activateBtn('actBtns', 'a', state.act);
-  scheduleRetrain();
-});
 
 document.getElementById('arrayBtns').addEventListener('click', e => {
   const b = e.target.closest('.btn');
