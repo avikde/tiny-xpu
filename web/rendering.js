@@ -298,14 +298,14 @@ function updateInsight() {
   const params = countParams(depth, width);
   const lossStr = lastLoss != null ? lastLoss.toFixed(4) : '?';
 
-  const profile = depth >= 4 ? 'deep-narrow' : 'shallow-wide';
+  const profile = depth >= 3 ? 'deep-narrow' : 'shallow-wide';
   const utilColor = overall >= 0.7 ? 'good' : overall >= 0.4 ? 'moderate' : 'poor';
   const utilLabel = { good: '✓ good', moderate: '~ moderate', poor: '✗ poor' }[utilColor];
 
   // Suggest twin
   let twinMsg = '';
-  if (depth >= 4) {
-    const twinDepth = 2;
+  if (depth >= 3) {
+    const twinDepth = 1;
     // find width with similar param count
     let bestW = 4, bestDiff = Infinity;
     for (const w of [4, 8, 16, 32, 64, 128]) {
@@ -314,9 +314,9 @@ function updateInsight() {
     }
     const twinSpatial = Math.min(bestW, arrayCols) / arrayCols;
     const twinUtil = twinSpatial * (BATCH / (BATCH + arrayRows + bestW - 2));
-    twinMsg = ` A <strong>2-layer width-${bestW}</strong> network has ~${countParams(twinDepth, bestW).toLocaleString()} params and runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with only 2 sequential matmuls.`;
+    twinMsg = ` A <strong>1-hidden-layer width-${bestW}</strong> network has ~${countParams(twinDepth, bestW).toLocaleString()} params and runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with only 1 sequential matmul.`;
   } else {
-    const twinDepth = 6;
+    const twinDepth = 5;
     let bestW = 4, bestDiff = Infinity;
     for (const w of [4, 8, 16, 32, 64, 128]) {
       const diff = Math.abs(countParams(twinDepth, w) - params);
@@ -324,14 +324,14 @@ function updateInsight() {
     }
     const twinSpatial = Math.min(bestW, arrayCols) / arrayCols;
     const twinUtil = twinSpatial * (BATCH / (BATCH + arrayRows + bestW - 2));
-    twinMsg = ` A <strong>6-layer width-${bestW}</strong> network has ~${countParams(twinDepth, bestW).toLocaleString()} params and runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with 6 sequential matmuls.`;
+    twinMsg = ` A <strong>5-hidden-layer width-${bestW}</strong> network has ~${countParams(twinDepth, bestW).toLocaleString()} params and runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with 5 sequential matmuls.`;
   }
 
   const { throughput, totalLatency, ai, peakMacs } = hwMetrics();
   const memBound = ai < peakMacs / BW_BYTES_PER_CYCLE;
 
   document.getElementById('insightBox').innerHTML =
-    `This <strong>${profile}</strong> network (${params.toLocaleString()} params, ${depth} layers) achieves loss <strong>${lossStr}</strong>. ` +
+    `This <strong>${profile}</strong> network (${params.toLocaleString()} params, ${depth} hidden layers) achieves loss <strong>${lossStr}</strong>. ` +
     `On the ${arrayRows}×${arrayCols} array it runs at <strong>${throughput.toFixed(1)} MACs/cycle</strong> (${(overall * 100).toFixed(0)}% of peak ${peakMacs}) — ${utilLabel}, ` +
     `<strong>${memBound ? 'memory-bound' : 'compute-bound'}</strong> (AI = ${ai.toFixed(1)} MACs/byte). ` +
     `Full inference: <strong>${seqMatmuls} matmul${seqMatmuls > 1 ? 's' : ''}</strong>, <strong>${totalLatency} cycles</strong> total.` +

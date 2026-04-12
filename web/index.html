@@ -211,8 +211,8 @@ input[type=range] {
 
 <div class="controls">
   <div class="ctrl-group">
-    <span class="ctrl-label">Depth (hidden layers) <span class="ctrl-value" id="depthVal">3</span></span>
-    <input type="range" id="depthSlider" min="1" max="8" value="3" step="1">
+    <span class="ctrl-label">Depth (hidden layers) <span class="ctrl-value" id="depthVal">2</span></span>
+    <input type="range" id="depthSlider" min="1" max="5" value="2" step="1">
   </div>
 
   <div class="ctrl-group">
@@ -336,7 +336,7 @@ input[type=range] {
 <script>
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = {
-  depth: 3,
+  depth: 2,
   width: 16,
   arrayRows: 16,
   arrayCols: 16,
