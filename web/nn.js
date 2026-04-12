@@ -33,12 +33,11 @@ function seededRand(seed) {
 function makeNet(inDim, width, depth, outDim) {
   const layers = [];
   const sizes = [inDim, ...Array(depth).fill(width), outDim];
-  const rng = seededRand(7);
   for (let i = 0; i + 1 < sizes.length; i++) {
     const fan_in = sizes[i], fan_out = sizes[i + 1];
     const scale = Math.sqrt(2 / fan_in);
     const W = Array.from({ length: fan_out }, () =>
-      Array.from({ length: fan_in }, () => (rng() * 2 - 1) * scale)
+      Array.from({ length: fan_in }, () => (Math.random() * 2 - 1) * scale)
     );
     const b = Array(fan_out).fill(0);
     layers.push({ W, b, fan_in, fan_out });
