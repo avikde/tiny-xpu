@@ -93,7 +93,7 @@ function render1D(ctx, targetFn) {
 }
 
 // ─── HW Panel ────────────────────────────────────────────────────────────────
-const BATCH = 64;
+const BATCH = 1000;
 
 const BW_BYTES_PER_CYCLE = 16; // SRAM bandwidth assumption
 
