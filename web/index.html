@@ -5,42 +5,57 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MLP Explorer — TinyXPU</title>
 <style>
+/* GitHub light palette:
+   --color-canvas-default: #ffffff
+   --color-canvas-subtle:  #f6f8fa
+   --color-border-default: #d0d7de
+   --color-border-muted:   #d8dee4
+   --color-fg-default:     #1f2328
+   --color-fg-muted:       #656d76
+   --color-accent-fg:      #0969da
+   --color-accent-subtle:  #ddf4ff
+   --color-success-fg:     #1a7f37
+   --color-attention-fg:   #9a6700
+   --color-danger-fg:      #d1242f
+*/
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  background: #0f1117;
-  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f6f8fa;
+  color: #1f2328;
   min-height: 100vh;
   padding: 16px;
+  font-size: 14px;
 }
 
 h1 {
   font-size: 1.4rem;
   font-weight: 600;
-  color: #f8fafc;
+  color: #1f2328;
   margin-bottom: 4px;
 }
-.subtitle { font-size: 0.85rem; color: #94a3b8; margin-bottom: 16px; }
+.subtitle { font-size: 0.85rem; color: #656d76; margin-bottom: 16px; }
 
 /* Controls */
 .controls {
   display: flex;
   flex-wrap: wrap;
   gap: 20px;
-  background: #1e2433;
-  border: 1px solid #2d3748;
-  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
   padding: 14px 18px;
   margin-bottom: 16px;
   align-items: flex-end;
 }
 .ctrl-group { display: flex; flex-direction: column; gap: 6px; }
-.ctrl-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
-.ctrl-value { font-size: 0.85rem; color: #38bdf8; font-weight: 600; }
+.ctrl-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #656d76; font-weight: 500; }
+.ctrl-value { font-size: 0.85rem; color: #0969da; font-weight: 600; }
 
 input[type=range] {
-  accent-color: #38bdf8;
+  accent-color: #0969da;
   width: 130px;
   cursor: pointer;
 }
@@ -48,16 +63,17 @@ input[type=range] {
 .btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
 .btn {
   padding: 4px 10px;
-  border-radius: 5px;
-  border: 1px solid #334155;
-  background: #1a2035;
-  color: #94a3b8;
+  border-radius: 6px;
+  border: 1px solid #d0d7de;
+  background: #f6f8fa;
+  color: #656d76;
   font-size: 0.8rem;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.1s;
+  font-family: inherit;
 }
-.btn.active { background: #0ea5e9; border-color: #0ea5e9; color: #fff; font-weight: 600; }
-.btn:hover:not(.active) { border-color: #64748b; color: #e2e8f0; }
+.btn.active { background: #0969da; border-color: #0969da; color: #fff; font-weight: 600; }
+.btn:hover:not(.active) { background: #f3f4f6; border-color: #afb8c1; color: #1f2328; }
 
 /* Main panels */
 .panels {
@@ -69,15 +85,15 @@ input[type=range] {
 @media (max-width: 680px) { .panels { grid-template-columns: 1fr; } }
 
 .panel {
-  background: #1e2433;
-  border: 1px solid #2d3748;
-  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
   padding: 16px;
 }
 .panel-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #cbd5e1;
+  color: #1f2328;
   margin-bottom: 12px;
   display: flex;
   align-items: center;
@@ -87,8 +103,9 @@ input[type=range] {
   font-size: 0.7rem;
   padding: 2px 7px;
   border-radius: 999px;
-  background: #1d3a5f;
-  color: #38bdf8;
+  background: #ddf4ff;
+  color: #0969da;
+  font-weight: 500;
 }
 
 /* ML panel */
@@ -97,14 +114,14 @@ input[type=range] {
   display: inline-block;
   border-radius: 6px;
   overflow: hidden;
-  border: 1px solid #2d3748;
+  border: 1px solid #d0d7de;
 }
 #mlCanvas { display: block; }
 #trainingOverlay {
   position: absolute; inset: 0;
-  background: rgba(15,17,23,0.7);
+  background: rgba(246,248,250,0.8);
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.85rem; color: #38bdf8;
+  font-size: 0.85rem; color: #0969da;
   pointer-events: none;
   transition: opacity 0.2s;
 }
@@ -117,9 +134,9 @@ input[type=range] {
   flex-wrap: wrap;
 }
 .stat { display: flex; flex-direction: column; gap: 2px; }
-.stat-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-.stat-val { font-size: 1.05rem; font-weight: 700; color: #f1f5f9; }
-.stat-unit { font-size: 0.68rem; color: #475569; }
+.stat-label { font-size: 0.7rem; color: #656d76; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
+.stat-val { font-size: 1.05rem; font-weight: 700; color: #1f2328; }
+.stat-unit { font-size: 0.68rem; color: #8c959f; }
 
 /* HW panel */
 .hw-metric { margin-bottom: 14px; }
@@ -127,19 +144,19 @@ input[type=range] {
   display: flex; justify-content: space-between;
   font-size: 0.8rem; margin-bottom: 5px;
 }
-.hw-metric-name { color: #94a3b8; }
-.hw-metric-val { font-weight: 700; color: #f1f5f9; }
+.hw-metric-name { color: #656d76; }
+.hw-metric-val { font-weight: 700; color: #1f2328; }
 
 .bar-track {
-  height: 10px;
-  background: #0f1117;
-  border-radius: 5px;
+  height: 8px;
+  background: #f6f8fa;
+  border-radius: 4px;
   overflow: hidden;
-  border: 1px solid #2d3748;
+  border: 1px solid #d0d7de;
 }
 .bar-fill {
   height: 100%;
-  border-radius: 5px;
+  border-radius: 4px;
   transition: width 0.4s ease, background 0.4s;
 }
 
@@ -151,39 +168,39 @@ input[type=range] {
 }
 .layer-table th {
   text-align: left;
-  color: #64748b;
-  font-weight: 500;
+  color: #656d76;
+  font-weight: 600;
   padding: 3px 6px;
-  border-bottom: 1px solid #2d3748;
+  border-bottom: 1px solid #d0d7de;
 }
 .layer-table td {
   padding: 3px 6px;
-  color: #cbd5e1;
-  border-bottom: 1px solid #1a2035;
+  color: #1f2328;
+  border-bottom: 1px solid #eaeef2;
 }
 .layer-table tr:last-child td { border-bottom: none; }
 
 /* Insight callout */
 .insight {
-  background: #1a2a1a;
-  border: 1px solid #2d4a2d;
-  border-left: 3px solid #22c55e;
-  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-left: 3px solid #1a7f37;
+  border-radius: 6px;
   padding: 12px 16px;
   font-size: 0.88rem;
   line-height: 1.6;
-  color: #d1fae5;
+  color: #1f2328;
 }
-.insight strong { color: #4ade80; }
+.insight strong { color: #0969da; }
 
-.divider { border: none; border-top: 1px solid #2d3748; margin: 12px 0; }
+.divider { border: none; border-top: 1px solid #d0d7de; margin: 12px 0; }
 
 #rooflineCanvas {
   display: block;
-  border: 1px solid #2d3748;
+  border: 1px solid #d0d7de;
   border-radius: 6px;
   margin: 10px 0;
-  background: #0f1117;
+  background: #ffffff;
 }
 </style>
 </head>
@@ -556,7 +573,7 @@ function renderBoundary(ctx) {
 
 function renderSine(ctx) {
   // Background
-  ctx.fillStyle = '#0f1117';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
   const pad = 20;
@@ -565,19 +582,19 @@ function renderSine(ctx) {
   const toY = y => pad + (1 - y) * H;
 
   // Grid lines at y=0.25, 0.5, 0.75
-  ctx.strokeStyle = '#1e2a3a';
+  ctx.strokeStyle = '#eaeef2';
   ctx.lineWidth = 1;
   [0.25, 0.5, 0.75].forEach(y => {
     ctx.beginPath(); ctx.moveTo(pad, toY(y)); ctx.lineTo(pad + W, toY(y)); ctx.stroke();
   });
 
   // Axes
-  ctx.strokeStyle = '#334155';
+  ctx.strokeStyle = '#d0d7de';
   ctx.lineWidth = 1;
   ctx.strokeRect(pad, pad, W, H);
 
   // True function
-  ctx.strokeStyle = '#475569';
+  ctx.strokeStyle = '#afb8c1';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   for (let px = 0; px <= W; px++) {
@@ -588,7 +605,7 @@ function renderSine(ctx) {
   ctx.stroke();
 
   // Network prediction
-  ctx.strokeStyle = '#38bdf8';
+  ctx.strokeStyle = '#0969da';
   ctx.lineWidth = 2;
   ctx.beginPath();
   for (let px = 0; px <= W; px++) {
@@ -603,16 +620,16 @@ function renderSine(ctx) {
   for (let i = 0; i < xs.length; i++) {
     ctx.beginPath();
     ctx.arc(toX(xs[i][0]), toY(ys[i][0]), 2, 0, 2 * Math.PI);
-    ctx.fillStyle = 'rgba(148,163,184,0.4)';
+    ctx.fillStyle = 'rgba(101,109,118,0.35)';
     ctx.fill();
   }
 
   // Legend
-  ctx.font = '10px system-ui';
-  ctx.fillStyle = '#475569'; ctx.fillRect(pad + 4, pad + 4, 12, 3); ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillStyle = '#afb8c1'; ctx.fillRect(pad + 4, pad + 4, 12, 3); ctx.fillStyle = '#656d76';
   ctx.fillText('true', pad + 20, pad + 10);
-  ctx.fillStyle = '#38bdf8'; ctx.fillRect(pad + 4, pad + 16, 12, 3);
-  ctx.fillStyle = '#94a3b8'; ctx.fillText('network', pad + 20, pad + 22);
+  ctx.fillStyle = '#0969da'; ctx.fillRect(pad + 4, pad + 16, 12, 3);
+  ctx.fillStyle = '#656d76'; ctx.fillText('network', pad + 20, pad + 22);
 }
 
 function countParams(depth, width) {
@@ -641,9 +658,9 @@ function hwMetrics() {
 }
 
 function barColor(v) {
-  if (v >= 0.7) return '#22c55e';
-  if (v >= 0.4) return '#eab308';
-  return '#ef4444';
+  if (v >= 0.7) return '#1a7f37';
+  if (v >= 0.4) return '#9a6700';
+  return '#d1242f';
 }
 
 function setBar(barId, valId, v) {
@@ -694,7 +711,7 @@ function drawRoofline(peakMacs, throughput, ai) {
   const ly = v => tPad + (1 - Math.log(Math.max(v, yMin) / yMin) / Math.log(yMax / yMin)) * plotH;
 
   // Grid lines at powers of 2
-  ctx.strokeStyle = '#1e2a3a';
+  ctx.strokeStyle = '#eaeef2';
   ctx.lineWidth = 1;
   for (let v = 1; v <= xMax; v *= 2) {
     ctx.beginPath(); ctx.moveTo(lx(v), tPad); ctx.lineTo(lx(v), tPad + plotH); ctx.stroke();
@@ -704,14 +721,14 @@ function drawRoofline(peakMacs, throughput, ai) {
   }
 
   // Axes
-  ctx.strokeStyle = '#334155';
+  ctx.strokeStyle = '#d0d7de';
   ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(lPad, tPad); ctx.lineTo(lPad, tPad + plotH); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(lPad, tPad + plotH); ctx.lineTo(lPad + plotW, tPad + plotH); ctx.stroke();
 
   // Axis tick labels
-  ctx.fillStyle = '#64748b';
-  ctx.font = '9px system-ui';
+  ctx.fillStyle = '#8c959f';
+  ctx.font = '9px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   for (let v = 1; v <= xMax; v *= 4) {
     ctx.fillText(v, lx(v), tPad + plotH + 10);
@@ -722,8 +739,8 @@ function drawRoofline(peakMacs, throughput, ai) {
   }
 
   // Axis labels
-  ctx.fillStyle = '#475569';
-  ctx.font = '9px system-ui';
+  ctx.fillStyle = '#656d76';
+  ctx.font = '9px -apple-system, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('Arithmetic Intensity (MACs/byte)', lPad + plotW / 2, H - 2);
   ctx.save();
@@ -735,7 +752,7 @@ function drawRoofline(peakMacs, throughput, ai) {
   const ridge = peakMacs / BW_BYTES_PER_CYCLE;
 
   // Bandwidth slope (memory-bound region)
-  ctx.strokeStyle = '#64748b';
+  ctx.strokeStyle = '#afb8c1';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4, 3]);
   ctx.beginPath();
@@ -745,7 +762,7 @@ function drawRoofline(peakMacs, throughput, ai) {
   ctx.setLineDash([]);
 
   // Compute ceiling (compute-bound region)
-  ctx.strokeStyle = '#94a3b8';
+  ctx.strokeStyle = '#57606a';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(lx(Math.max(ridge, xMin)), ly(peakMacs));
@@ -753,11 +770,11 @@ function drawRoofline(peakMacs, throughput, ai) {
   ctx.stroke();
 
   // Labels
-  ctx.font = 'bold 9px system-ui';
-  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 9px -apple-system, sans-serif';
+  ctx.fillStyle = '#57606a';
   ctx.textAlign = 'right';
   ctx.fillText(`Peak: ${peakMacs} MACs/cyc`, lPad + plotW - 2, ly(peakMacs) - 3);
-  ctx.fillStyle = '#64748b';
+  ctx.fillStyle = '#8c959f';
   ctx.textAlign = 'left';
   if (ly(BW_BYTES_PER_CYCLE * xMin) < tPad + plotH - 10) {
     ctx.fillText(`${BW_BYTES_PER_CYCLE} B/cyc`, lx(xMin) + 2, ly(BW_BYTES_PER_CYCLE * xMin) - 3);
@@ -765,19 +782,19 @@ function drawRoofline(peakMacs, throughput, ai) {
 
   // Operating point
   const memBound = ai < ridge;
-  const ptColor = memBound ? '#f97316' : '#22c55e';
+  const ptColor = memBound ? '#d1242f' : '#1a7f37';
   const px = lx(ai), py = ly(throughput);
   ctx.beginPath();
   ctx.arc(px, py, 5, 0, 2 * Math.PI);
   ctx.fillStyle = ptColor;
   ctx.fill();
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
   // Operating point label
   ctx.fillStyle = ptColor;
-  ctx.font = 'bold 9px system-ui';
+  ctx.font = 'bold 9px -apple-system, sans-serif';
   ctx.textAlign = py < tPad + 20 ? 'left' : 'center';
   ctx.fillText(memBound ? 'memory-bound' : 'compute-bound', px, py < tPad + 16 ? py + 14 : py - 8);
 }
