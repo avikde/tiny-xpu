@@ -3,28 +3,20 @@ function sineTarget(x) {
   return (Math.sin(4.4 * x) * 0.4 + Math.cos(6.3 * x)) * 0.4 + 0.5;
 }
 
+function squareTarget(x) {
+  // Square wave with ~3 transitions across [-1,1], mapped to [0.2, 0.8]
+  return Math.sin(3 * Math.PI * x) >= 0 ? 0.75 : 0.25;
+}
+
 // ─── Dataset generation ────────────────────────────────────────────────────────
 function genDataset(task, n = 200) {
   const xs = [], ys = [];
   const rng = seededRand(42);
-
-  if (task === 'spiral') {
-    for (let k = 0; k < 2; k++) {
-      for (let i = 0; i < n / 2; i++) {
-        const t = (i / (n / 2)) * 2 * Math.PI * 1.5;
-        const r = 0.1 + 0.8 * (i / (n / 2));
-        const nx = r * Math.cos(t + k * Math.PI) + rng() * 0.05;
-        const ny = r * Math.sin(t + k * Math.PI) + rng() * 0.05;
-        xs.push([nx, ny]);
-        ys.push([k]);
-      }
-    }
-  } else { // sine — 1D regression
-    for (let i = 0; i < n; i++) {
-      const x = rng() * 2 - 1;
-      xs.push([x]);
-      ys.push([sineTarget(x)]);
-    }
+  const targetFn = task === 'sine' ? sineTarget : squareTarget;
+  for (let i = 0; i < n; i++) {
+    const x = rng() * 2 - 1;
+    xs.push([x]);
+    ys.push([targetFn(x)]);
   }
   return { xs, ys };
 }
@@ -113,7 +105,6 @@ function predict(layers, x) {
 }
 
 function countParams(depth, width) {
-  const inDim = state.task === 'sine' ? 1 : 2;
   if (depth === 0) return width + 1;
-  return (inDim * width + width) + (depth - 1) * (width * width + width) + (width + 1);
+  return (width + width) + (depth - 1) * (width * width + width) + (width + 1);
 }

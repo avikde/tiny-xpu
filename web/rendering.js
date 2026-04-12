@@ -23,52 +23,15 @@ function renderML() {
 
   if (!currentNet) return;
 
-  if (state.task === 'sine') {
-    renderSine(ctx);
-  } else {
-    renderBoundary(ctx, canvas);
-  }
+  const targetFn = state.task === 'sine' ? sineTarget : squareTarget;
+  render1D(ctx, targetFn);
 
   const params = countParams(state.depth, state.width);
   document.getElementById('statParams').textContent = params.toLocaleString();
-  document.getElementById('statLoss').textContent = lastLoss != null ? lastLoss.toFixed(4) : '—';
+  document.getElementById('statLoss').textContent = lastLoss != null ? Math.log10(lastLoss).toFixed(2) : '—';
 }
 
-function renderBoundary(ctx, canvas) {
-  const physW = canvas.width, physH = canvas.height;
-  const step = Math.round(GRID_STEP * physW / CANVAS_SIZE);
-  const imgData = ctx.createImageData(physW, physH);
-  for (let py = 0; py < physH; py += step) {
-    for (let px = 0; px < physW; px += step) {
-      const nx = (px / physW) * 2 - 1;
-      const ny = (py / physH) * 2 - 1;
-      const p = predict(currentNet, [nx, ny]);
-      const v = Math.round(Math.max(0, Math.min(1, p)) * 200);
-      for (let dy = 0; dy < step && py + dy < physH; dy++) {
-        for (let dx = 0; dx < step && px + dx < physW; dx++) {
-          const idx = ((py + dy) * physW + (px + dx)) * 4;
-          imgData.data[idx] = 15 + v;
-          imgData.data[idx + 1] = 15 + v;
-          imgData.data[idx + 2] = 20 + v;
-          imgData.data[idx + 3] = 255;
-        }
-      }
-    }
-  }
-  ctx.putImageData(imgData, 0, 0);
-
-  const { xs, ys } = dataset;
-  for (let i = 0; i < xs.length; i++) {
-    const px = (xs[i][0] + 1) / 2 * CANVAS_SIZE;
-    const py = (xs[i][1] + 1) / 2 * CANVAS_SIZE;
-    ctx.beginPath();
-    ctx.arc(px, py, 2.5, 0, 2 * Math.PI);
-    ctx.fillStyle = ys[i][0] > 0.5 ? '#b91c1c' : '#1d4ed8';
-    ctx.fill();
-  }
-}
-
-function renderSine(ctx) {
+function render1D(ctx, targetFn) {
   // Background
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -96,7 +59,7 @@ function renderSine(ctx) {
   ctx.beginPath();
   for (let px = 0; px <= W; px++) {
     const x = (px / W) * 2 - 1;
-    const y = sineTarget(x);
+    const y = targetFn(x);
     px === 0 ? ctx.moveTo(toX(x), toY(y)) : ctx.lineTo(toX(x), toY(y));
   }
   ctx.stroke();
@@ -177,7 +140,7 @@ function updateHW() {
   const tbody = document.getElementById('layerTable');
   tbody.innerHTML = '';
   const { depth, width } = state;
-  const shapes = [[2, width], ...Array(depth - 1).fill([width, width]), [width, 1]];
+  const shapes = [[1, width], ...Array(depth - 1).fill([width, width]), [width, 1]];
   shapes.forEach(([inn, out], i) => {
     const p = inn * out + out;
     const tr = document.createElement('tr');
@@ -296,7 +259,7 @@ function updateInsight() {
   const { depth, width, arrayRows, arrayCols } = state;
   const { overall, seqMatmuls } = hwMetrics();
   const params = countParams(depth, width);
-  const lossStr = lastLoss != null ? lastLoss.toFixed(4) : '?';
+  const lossStr = lastLoss != null ? Math.log10(lastLoss).toFixed(2) : '?';
 
   const profile = depth >= 3 ? 'deep-narrow' : 'shallow-wide';
   const utilColor = overall >= 0.7 ? 'good' : overall >= 0.4 ? 'moderate' : 'poor';
@@ -331,7 +294,7 @@ function updateInsight() {
   const memBound = ai < peakMacs / BW_BYTES_PER_CYCLE;
 
   document.getElementById('insightBox').innerHTML =
-    `This <strong>${profile}</strong> network (${params.toLocaleString()} params, ${depth} hidden layers) achieves loss <strong>${lossStr}</strong>. ` +
+    `This <strong>${profile}</strong> network (${params.toLocaleString()} params, ${depth} hidden layers) achieves log&#8321;&#8320; loss <strong>${lossStr}</strong>. ` +
     `On the ${arrayRows}×${arrayCols} array it runs at <strong>${throughput.toFixed(1)} MACs/cycle</strong> (${(overall * 100).toFixed(0)}% of peak ${peakMacs}) — ${utilLabel}, ` +
     `<strong>${memBound ? 'memory-bound' : 'compute-bound'}</strong> (AI = ${ai.toFixed(1)} MACs/byte). ` +
     `Full inference: <strong>${seqMatmuls} matmul${seqMatmuls > 1 ? 's' : ''}</strong>, <strong>${totalLatency} cycles</strong> total.` +
@@ -340,7 +303,7 @@ function updateInsight() {
 
 // ─── Network diagram ──────────────────────────────────────────────────────────
 function drawNetDiagram() {
-  const inDim = state.task === 'sine' ? 1 : 2;
+  const inDim = 1;
   const { depth, width } = state;
   const sizes = [inDim, ...Array(depth).fill(width), 1];
   const nLayers = sizes.length - 1;

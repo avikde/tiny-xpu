@@ -212,7 +212,7 @@ input[type=range] {
 <div class="controls">
   <div class="ctrl-group">
     <span class="ctrl-label">Depth (hidden layers) <span class="ctrl-value" id="depthVal">2</span></span>
-    <input type="range" id="depthSlider" min="1" max="5" value="2" step="1">
+    <input type="range" id="depthSlider" min="1" max="4" value="2" step="1">
   </div>
 
   <div class="ctrl-group">
@@ -239,8 +239,8 @@ input[type=range] {
   <div class="ctrl-group">
     <span class="ctrl-label">Task</span>
     <div class="btn-group" id="taskBtns">
-      <button class="btn active" data-t="spiral">Spiral</button>
-      <button class="btn" data-t="sine">Sum of sines</button>
+      <button class="btn active" data-t="sine">Sum of sines</button>
+      <button class="btn" data-t="square">Square wave</button>
     </div>
   </div>
 </div>
@@ -259,7 +259,7 @@ input[type=range] {
         <span class="stat-val" id="statParams">—</span>
       </div>
       <div class="stat">
-        <span class="stat-label">Loss (500 steps)</span>
+        <span class="stat-label">log&#8321;&#8320; Loss (up to 2000 steps)</span>
         <span class="stat-val" id="statLoss">—</span>
       </div>
       <div class="stat">
@@ -340,7 +340,7 @@ const state = {
   width: 16,
   arrayRows: 16,
   arrayCols: 16,
-  task: 'spiral',
+  task: 'sine',
 };
 
 let trainTimer = null;
@@ -351,18 +351,21 @@ let lastSteps = 0;
 let currentNet = null;
 let dataset = null;
 let trainStep = 0;
-const TOTAL_STEPS = 500;
+const MAX_STEPS = 2000;
 const STEPS_PER_TICK = 25;
+const CONV_THRESHOLD = 1e-4; // stop if loss improves less than this over 100 steps
+const CONV_TICKS = 4;        // 4 ticks × 25 steps = 100-step window
+let lossHistory = [];
 
 function startTraining() {
   if (trainTimer) clearTimeout(trainTimer);
   showOverlay(true);
 
   dataset = genDataset(state.task);
-  const inDim = state.task === 'sine' ? 1 : 2, outDim = 1;
-  currentNet = makeNet(inDim, state.width, state.depth, outDim);
+  currentNet = makeNet(1, state.width, state.depth, 1);
   trainStep = 0;
   lastLoss = null;
+  lossHistory = [];
   document.getElementById('statSteps').textContent = '0';
 
   trainTick();
@@ -372,7 +375,7 @@ function trainTick() {
   if (!currentNet || !dataset) return;
   const { xs, ys } = dataset;
   let totalLoss = 0;
-  const end = Math.min(trainStep + STEPS_PER_TICK, TOTAL_STEPS);
+  const end = Math.min(trainStep + STEPS_PER_TICK, MAX_STEPS);
 
   for (let step = trainStep; step < end; step++) {
     for (let i = 0; i < xs.length; i++) {
@@ -385,10 +388,14 @@ function trainTick() {
   trainStep = end;
   lastLoss = totalLoss / (STEPS_PER_TICK * xs.length);
   lastSteps = trainStep;
+  lossHistory.push(lastLoss);
 
   document.getElementById('statSteps').textContent = trainStep;
 
-  if (trainStep < TOTAL_STEPS) {
+  const converged = lossHistory.length > CONV_TICKS &&
+    Math.abs(lossHistory[lossHistory.length - 1 - CONV_TICKS] - lastLoss) < CONV_THRESHOLD;
+
+  if (trainStep < MAX_STEPS && !converged) {
     trainTimer = setTimeout(trainTick, 0);
   } else {
     showOverlay(false);
