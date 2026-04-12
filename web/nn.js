@@ -59,9 +59,7 @@ function forward(layers, x) {
     const { W, b } = layers[li];
     const z = W.map((row, i) => row.reduce((s, w, j) => s + w * a[j], 0) + b[i]);
     const isLast = li === layers.length - 1;
-    const aNext = isLast
-      ? z.map(v => 1 / (1 + Math.exp(-v)))  // sigmoid output
-      : z.map(v => activation(v));
+    const aNext = isLast ? z.slice() : z.map(v => activation(v));  // linear output
     cache.push({ a: aNext, z });
     a = aNext;
   }
@@ -69,12 +67,8 @@ function forward(layers, x) {
 }
 
 function loss(pred, target) {
-  // binary cross-entropy (works for regression too since targets ∈ [0,1])
-  const eps = 1e-7;
-  return pred.reduce((s, p, i) => {
-    const t = target[i];
-    return s - (t * Math.log(p + eps) + (1 - t) * Math.log(1 - p + eps));
-  }, 0) / pred.length;
+  // MSE
+  return pred.reduce((s, p, i) => s + (p - target[i]) ** 2, 0) / pred.length;
 }
 
 function backward(layers, cache, target, lr = 0.05) {

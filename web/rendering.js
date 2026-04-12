@@ -47,7 +47,7 @@ function renderBoundary(ctx, canvas) {
       const nx = (px / physW) * 2 - 1;
       const ny = (py / physH) * 2 - 1;
       const p = predict(currentNet, [nx, ny]);
-      const v = Math.round(p * 200);
+      const v = Math.round(Math.max(0, Math.min(1, p)) * 200);
       for (let dy = 0; dy < step && py + dy < physH; dy++) {
         for (let dx = 0; dx < step && px + dx < physW; dx++) {
           const idx = ((py + dy) * physW + (px + dx)) * 4;
@@ -366,7 +366,7 @@ function drawNetDiagram() {
     const isLast = i === nLayers - 1;
     parts.push(netArrow(x, cy, ARROW));
     x += ARROW;
-    parts.push(netBox(x, cy, BOX_W, BOX_H, `${sizes[i]}→${sizes[i + 1]}`, isLast ? 'Sigmoid' : 'ReLU', isLast));
+    parts.push(netBox(x, cy, BOX_W, BOX_H, `${sizes[i]}→${sizes[i + 1]}`, isLast ? 'Linear' : 'ReLU', isLast));
     x += BOX_W;
   }
 
