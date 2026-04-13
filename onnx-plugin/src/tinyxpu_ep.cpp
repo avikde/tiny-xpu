@@ -883,14 +883,17 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         const int64_t total_ticks = total_M + HW_ROWS + N_sl - 2;
         arr.en = 1;
         for (int64_t t = 0; t < total_ticks; ++t) {
-            if (t < total_M) {
-                for (int k = 0; k < HW_ROWS; ++k) {
-                    int8_t a = (k < K_sl) ? A_sl[t * K_sl + k] : 0;
-                    arr.data_in[k] = static_cast<uint8_t>(a);
-                    if (k < K_sl) obs.activation_writes++;
+            // External pre-staggering: row r's element at (t-r) enters at cycle t.
+            // Row 0 enters at t=0, row 1 at t=1, etc.
+            for (int r = 0; r < HW_ROWS; ++r) {
+                const int64_t src_row = t - r;
+                if (src_row >= 0 && src_row < total_M && r < K_sl) {
+                    int8_t a = A_sl[src_row * K_sl + r];
+                    arr.data_in[r] = static_cast<uint8_t>(a);
+                    obs.activation_writes++;
+                } else {
+                    arr.data_in[r] = 0;
                 }
-            } else {
-                for (int k = 0; k < HW_ROWS; ++k) arr.data_in[k] = 0;
             }
             tick(); obs.ticks_streaming++;
 
