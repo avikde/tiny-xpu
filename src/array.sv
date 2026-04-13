@@ -7,17 +7,20 @@
 //   - Partial sums cascade south (↓) one lane per column
 //   - Weights are loaded once per tile (weight_ld=1), then held stationary
 //
-// Input skewing: row r receives its activation r cycles later than row 0,
-// so that all K elements of output row i arrive at column 0 of their
-// respective PE rows at the same effective cycle.  This is implemented
-// with shift-register delay lines inside this module; the driver simply
-// presents row i of A on data_in[*] at streaming cycle i with no manual
-// staggering.
+// External pre-staggering: the driver (or previous layer) is responsible
+// for staggering inputs in time.  Row r should begin streaming r cycles
+// after row 0, so that all K elements of output row i arrive at the
+// leftmost column of row i's PE lane at the same effective cycle.
+// The module simply passes data_in[r] straight to data_wire[r][0] with no
+// internal delay lines.
 //
-// Output: acc_out[c] is wired directly to acc_wire[ROWS][c] with no
-// de-skew registers.  Column c of output row i is valid at cycle
-// i + ROWS + c (1-indexed).  The driver reads each column at its own
-// cycle rather than waiting for all columns to align.
+// This design enables direct layer chaining: layer N's data_out feeds into
+// layer N+1's data_in, and the inter-layer pipeline registers handle the
+// staggering.  No de-skewing buffers are needed between layers.
+//
+// Output: acc_out[c] is wired directly to acc_wire[ROWS][c].  Column c of
+// output row i is valid at cycle i + ROWS + c (1-indexed).  The driver
+// reads each column at its own tick rather than waiting for alignment.
 //
 // Array size is set by ROWS and COLS parameters.  When built via Verilator
 // the values are overridden at elaboration time with -GROWS=N -GCOLS=N so
@@ -35,8 +38,8 @@ module array #(
     input  logic relu_en,   // when 1, clamp acc_out negatives to 0 (hardware ReLU)
 
     // Activation inputs — one per row, stream east through the array.
-    // Present row i of A on data_in[*] at streaming cycle i; the module
-    // applies the per-row skew internally.
+    // The caller is responsible for staggering: row r should present its
+    // first element r cycles after row 0 begins streaming.
     input  logic signed [DATA_WIDTH-1:0] data_in  [ROWS],
     // Activation outputs — rightmost column passthrough (useful for chaining)
     output logic signed [DATA_WIDTH-1:0] data_out [ROWS],
@@ -87,41 +90,14 @@ module array #(
     endgenerate
 
     // ----------------------------------------------------------------
-    // Input skewing: row r is delayed by r clock cycles.
-    // skew_buf[r][k]: stage k of the shift register for row r.
-    //   row 0 → direct wire (0 FFs)
-    //   row 1 → 1 FF  (stage 0 only)
-    //   row r → r FFs (stages 0..r-1)
+    // Input: direct connection to column 0 of the data wire.
+    // External pre-staggering is the caller's responsibility.
     // ----------------------------------------------------------------
 
-    logic signed [DATA_WIDTH-1:0] skew_buf [ROWS][ROWS]; // [row][stage]
-
-    genvar r_sk, k_sk;
+    genvar r_in;
     generate
-        // Row 0: no delay, connect directly
-        assign data_wire[0][0] = data_in[0];
-
-        // Stage 0 for rows 1..ROWS-1: latch data_in
-        for (r_sk = 1; r_sk < ROWS; r_sk++) begin : gen_skew_s0
-            always_ff @(posedge clk or negedge rst_n) begin
-                if (!rst_n) skew_buf[r_sk][0] <= '0;
-                else        skew_buf[r_sk][0] <= data_in[r_sk];
-            end
-        end
-
-        // Chain stages 1..r-1 for rows 2..ROWS-1
-        for (r_sk = 2; r_sk < ROWS; r_sk++) begin : gen_skew_chain_row
-            for (k_sk = 1; k_sk < r_sk; k_sk++) begin : gen_skew_chain_stage
-                always_ff @(posedge clk or negedge rst_n) begin
-                    if (!rst_n) skew_buf[r_sk][k_sk] <= '0;
-                    else        skew_buf[r_sk][k_sk] <= skew_buf[r_sk][k_sk-1];
-                end
-            end
-        end
-
-        // Connect shift register outputs to data_wire column 0
-        for (r_sk = 1; r_sk < ROWS; r_sk++) begin : gen_skew_connect
-            assign data_wire[r_sk][0] = skew_buf[r_sk][r_sk-1];
+        for (r_in = 0; r_in < ROWS; r_in++) begin : gen_data_in
+            assign data_wire[r_in][0] = data_in[r_in];
         end
     endgenerate
 
