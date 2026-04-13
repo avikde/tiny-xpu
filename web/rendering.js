@@ -109,13 +109,22 @@ function hwMetrics() {
   const throughput = overall * peakMacs;
   const latencyPerLayer = arrayRows + N - 2; // pipeline latency: first in → last out
   const totalLatency = depth * latencyPerLayer;
-  const ai = (M * N) / (N + M); // MACs/byte, weight-stationary hidden layer
+  // AI = useful MACs / total bytes (weights int8 + activations int8 + outputs int32)
+  // Hidden layer: K=N=width, so weight_bytes=N², activation_bytes=M*N, output_bytes=4*M*N
+  const ai = (M * N * N) / (N * N + M * N + 4 * M * N);
   return { spatial, temporal, overall, peakMacs, throughput, totalLatency, ai };
 }
 
 function barColor(v) {
   if (v >= 0.7) return '#1a7f37';
   if (v >= 0.4) return '#9a6700';
+  return '#d1242f';
+}
+
+// Higher latency fraction = worse (inverted color scale)
+function latencyBarColor(v) {
+  if (v <= 0.3) return '#1a7f37';
+  if (v <= 0.6) return '#9a6700';
   return '#d1242f';
 }
 
@@ -133,7 +142,16 @@ function updateHW() {
   setBar('hwSpatialBar', 'hwSpatial', spatial);
   setBar('hwTemporalBar', 'hwTemporal', temporal);
   document.getElementById('hwThroughput').textContent = throughput.toFixed(1);
+  const tpBar = document.getElementById('hwThroughputBar');
+  tpBar.style.width = (throughput / peakMacs * 100).toFixed(1) + '%';
+  tpBar.style.background = barColor(throughput / peakMacs);
+
   document.getElementById('hwLatency').textContent = totalLatency.toLocaleString();
+  const maxLatency = 150;
+  const latFrac = Math.min(totalLatency / maxLatency, 1);
+  const latBar = document.getElementById('hwLatencyBar');
+  latBar.style.width = (latFrac * 100).toFixed(1) + '%';
+  latBar.style.background = latencyBarColor(latFrac);
 
   drawRoofline(peakMacs, throughput, ai);
 
@@ -205,10 +223,19 @@ function drawRoofline(peakMacs, throughput, ai) {
   ctx.fillText('MACs/cycle', 0, 0);
   ctx.restore();
 
+  const BW_HI = 64; // high-bandwidth ceiling (matches plot_roofline.py bw_hi)
   const ridge = peakMacs / BW_BYTES_PER_CYCLE;
+  const ridgeHi = peakMacs / BW_HI;
 
-  // Bandwidth slope (memory-bound region)
+  // High-BW slope (solid, 64 B/cyc)
   ctx.strokeStyle = '#afb8c1';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(lx(xMin), ly(BW_HI * xMin));
+  ctx.lineTo(lx(Math.min(ridgeHi, xMax)), ly(Math.min(BW_HI * ridgeHi, peakMacs)));
+  ctx.stroke();
+
+  // Low-BW slope (dashed, 16 B/cyc)
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4, 3]);
   ctx.beginPath();
@@ -221,7 +248,7 @@ function drawRoofline(peakMacs, throughput, ai) {
   ctx.strokeStyle = '#57606a';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(lx(Math.max(ridge, xMin)), ly(peakMacs));
+  ctx.moveTo(lx(Math.max(ridgeHi, xMin)), ly(peakMacs));
   ctx.lineTo(lx(xMax), ly(peakMacs));
   ctx.stroke();
 
@@ -231,7 +258,11 @@ function drawRoofline(peakMacs, throughput, ai) {
   ctx.textAlign = 'right';
   ctx.fillText(`Peak: ${peakMacs} MACs/cyc`, lPad + plotW - 2, ly(peakMacs) - 3);
   ctx.fillStyle = '#8c959f';
+  ctx.font = '9px -apple-system, sans-serif';
   ctx.textAlign = 'left';
+  if (ly(BW_HI * xMin) < tPad + plotH - 10) {
+    ctx.fillText(`${BW_HI} B/cyc`, lx(xMin) + 2, ly(BW_HI * xMin) - 3);
+  }
   if (ly(BW_BYTES_PER_CYCLE * xMin) < tPad + plotH - 10) {
     ctx.fillText(`${BW_BYTES_PER_CYCLE} B/cyc`, lx(xMin) + 2, ly(BW_BYTES_PER_CYCLE * xMin) - 3);
   }

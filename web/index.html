@@ -259,7 +259,7 @@ input[type=range] {
         <span class="stat-val" id="statParams">—</span>
       </div>
       <div class="stat">
-        <span class="stat-label">log&#8321;&#8320; Loss (up to 2000 steps)</span>
+        <span class="stat-label">log&#8321;&#8320; Loss (lower better)</span>
         <span class="stat-val" id="statLoss">—</span>
       </div>
       <div class="stat">
@@ -302,17 +302,20 @@ input[type=range] {
 
     <hr class="divider">
 
-    <div class="stats-row" style="margin-top:0; margin-bottom:10px;">
-      <div class="stat">
-        <span class="stat-label">Throughput</span>
-        <span class="stat-val" id="hwThroughput">—</span>
-        <span class="stat-unit">MACs/cycle</span>
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">Throughput <span style="font-weight:400;color:#8c959f">(vs peak array MACs/cycle)</span></span>
+        <span class="hw-metric-val"><span id="hwThroughput">—</span> <span style="font-weight:400;font-size:0.75rem;color:#8c959f">MACs/cyc</span></span>
       </div>
-      <div class="stat">
-        <span class="stat-label">Inference latency</span>
-        <span class="stat-val" id="hwLatency">—</span>
-        <span class="stat-unit">cycles</span>
+      <div class="bar-track"><div class="bar-fill" id="hwThroughputBar" style="width:0%"></div></div>
+    </div>
+
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">Inference latency <span style="font-weight:400;color:#8c959f">(higher = worse)</span></span>
+        <span class="hw-metric-val"><span id="hwLatency">—</span> <span style="font-weight:400;font-size:0.75rem;color:#8c959f">cycles</span></span>
       </div>
+      <div class="bar-track"><div class="bar-fill" id="hwLatencyBar" style="width:0%"></div></div>
     </div>
 
     <canvas id="rooflineCanvas" width="280" height="160"></canvas>
