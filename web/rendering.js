@@ -147,7 +147,7 @@ function updateHW() {
   tpBar.style.background = barColor(throughput / peakMacs);
 
   document.getElementById('hwLatency').textContent = totalLatency.toLocaleString();
-  const maxLatency = 150;
+  const maxLatency = 124;
   const latFrac = Math.min(totalLatency / maxLatency, 1);
   const latBar = document.getElementById('hwLatencyBar');
   latBar.style.width = (latFrac * 100).toFixed(1) + '%';
