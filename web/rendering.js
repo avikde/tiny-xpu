@@ -273,7 +273,7 @@ function updateInsight() {
     const twinDepth = 1;
     // find width with similar param count
     let bestW = 4, bestDiff = Infinity;
-    for (const w of [4, 8, 16, 32, 64, 128]) {
+    for (const w of [4, 8, 12, 16, 24, 32]) {
       const diff = Math.abs(countParams(twinDepth, w) - params);
       if (diff < bestDiff) { bestDiff = diff; bestW = w; }
     }
@@ -283,7 +283,7 @@ function updateInsight() {
   } else {
     const twinDepth = 5;
     let bestW = 4, bestDiff = Infinity;
-    for (const w of [4, 8, 16, 32, 64, 128]) {
+    for (const w of [4, 8, 12, 16, 24, 32]) {
       const diff = Math.abs(countParams(twinDepth, w) - params);
       if (diff < bestDiff) { bestDiff = diff; bestW = w; }
     }
