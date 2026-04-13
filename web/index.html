@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLP Explorer — TinyXPU</title>
+<style>
+/* GitHub light palette:
+   --color-canvas-default: #ffffff
+   --color-canvas-subtle:  #f6f8fa
+   --color-border-default: #d0d7de
+   --color-border-muted:   #d8dee4
+   --color-fg-default:     #1f2328
+   --color-fg-muted:       #656d76
+   --color-accent-fg:      #0969da
+   --color-accent-subtle:  #ddf4ff
+   --color-success-fg:     #1a7f37
+   --color-attention-fg:   #9a6700
+   --color-danger-fg:      #d1242f
+*/
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f6f8fa;
+  color: #1f2328;
+  min-height: 100vh;
+  padding: 16px;
+  font-size: 14px;
+}
+
+h1 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #1f2328;
+  margin-bottom: 4px;
+}
+.subtitle { font-size: 0.85rem; color: #656d76; margin-bottom: 16px; }
+
+/* Controls */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  align-items: flex-end;
+}
+.ctrl-group { display: flex; flex-direction: column; gap: 6px; }
+.ctrl-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #656d76; font-weight: 500; }
+.ctrl-value { font-size: 0.85rem; color: #0969da; font-weight: 600; }
+
+input[type=range] {
+  accent-color: #0969da;
+  width: 130px;
+  cursor: pointer;
+}
+
+.btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #d0d7de;
+  background: #f6f8fa;
+  color: #656d76;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.1s;
+  font-family: inherit;
+}
+.btn.active { background: #0969da; border-color: #0969da; color: #fff; font-weight: 600; }
+.btn:hover:not(.active) { background: #f3f4f6; border-color: #afb8c1; color: #1f2328; }
+
+/* Main panels */
+.panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 680px) { .panels { grid-template-columns: 1fr; } }
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 16px;
+}
+.panel-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2328;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-title .badge {
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #ddf4ff;
+  color: #0969da;
+  font-weight: 500;
+}
+
+/* ML panel */
+.canvas-wrap {
+  position: relative;
+  display: inline-block;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #d0d7de;
+}
+#mlCanvas { display: block; }
+#trainingOverlay {
+  position: absolute; inset: 0;
+  background: rgba(246,248,250,0.8);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.85rem; color: #0969da;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+#trainingOverlay.hidden { opacity: 0; }
+
+.stats-row {
+  display: flex;
+  gap: 18px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat-label { font-size: 0.7rem; color: #656d76; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
+.stat-val { font-size: 1.05rem; font-weight: 700; color: #1f2328; }
+.stat-unit { font-size: 0.68rem; color: #8c959f; }
+
+/* HW panel */
+.hw-metric { margin-bottom: 14px; }
+.hw-metric-header {
+  display: flex; justify-content: space-between;
+  font-size: 0.8rem; margin-bottom: 5px;
+}
+.hw-metric-name { color: #656d76; }
+.hw-metric-val { font-weight: 700; color: #1f2328; }
+
+.bar-track {
+  height: 8px;
+  background: #f6f8fa;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #d0d7de;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease, background 0.4s;
+}
+
+.layer-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  margin-top: 10px;
+}
+.layer-table th {
+  text-align: left;
+  color: #656d76;
+  font-weight: 600;
+  padding: 3px 6px;
+  border-bottom: 1px solid #d0d7de;
+}
+.layer-table td {
+  padding: 3px 6px;
+  color: #1f2328;
+  border-bottom: 1px solid #eaeef2;
+}
+.layer-table tr:last-child td { border-bottom: none; }
+
+/* Insight callout */
+.insight {
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-left: 3px solid #1a7f37;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: #1f2328;
+}
+.insight strong { color: #0969da; }
+
+.divider { border: none; border-top: 1px solid #d0d7de; margin: 12px 0; }
+
+#rooflineCanvas {
+  display: block;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  margin: 10px 0;
+  background: #ffffff;
+}
+</style>
+</head>
+<body>
+
+<h1>MLP Explorer</h1>
+<p class="subtitle">ML expressivity vs. TinyXPU hardware efficiency &middot; <a href="https://github.com/avikde/tiny-xpu">Source code</a></p>
+
+<div class="controls">
+  <div class="ctrl-group">
+    <span class="ctrl-label">Depth (hidden layers) <span class="ctrl-value" id="depthVal">2</span></span>
+    <input type="range" id="depthSlider" min="1" max="3" value="2" step="1">
+  </div>
+
+  <div class="ctrl-group">
+    <span class="ctrl-label">Width (neurons/layer)</span>
+    <div class="btn-group" id="widthBtns">
+      <button class="btn" data-w="4">4</button>
+      <button class="btn" data-w="8">8</button>
+      <button class="btn" data-w="12">12</button>
+      <button class="btn active" data-w="16">16</button>
+      <button class="btn" data-w="24">24</button>
+      <button class="btn" data-w="32">32</button>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <span class="ctrl-label">Array size</span>
+    <div class="btn-group" id="arrayBtns">
+      <button class="btn" data-r="8" data-c="8">8×8</button>
+      <button class="btn active" data-r="16" data-c="16">16×16</button>
+      <button class="btn" data-r="32" data-c="32">32×32</button>
+    </div>
+  </div>
+
+  <div class="ctrl-group">
+    <span class="ctrl-label">Task</span>
+    <div class="btn-group" id="taskBtns">
+      <button class="btn active" data-t="sine">Sum of sines</button>
+      <button class="btn" data-t="square">Square wave</button>
+    </div>
+  </div>
+</div>
+
+<div class="panels">
+  <!-- ML Panel -->
+  <div class="panel">
+    <div class="panel-title">ML Expressivity <span class="badge">in-browser training</span></div>
+    <div class="canvas-wrap">
+      <canvas id="mlCanvas" width="300" height="300"></canvas>
+      <div id="trainingOverlay">Training…</div>
+    </div>
+    <div class="stats-row">
+      <div class="stat">
+        <span class="stat-label">Parameters</span>
+        <span class="stat-val" id="statParams">—</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">log&#8321;&#8320; Loss (lower better)</span>
+        <span class="stat-val" id="statLoss">—</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Steps</span>
+        <span class="stat-val" id="statSteps">—</span>
+      </div>
+    </div>
+    <hr class="divider">
+    <div class="panel-title" style="margin-bottom:8px;">Network Architecture</div>
+    <div id="netDiagram" style="overflow-x:auto;"></div>
+  </div>
+
+  <!-- HW Panel -->
+  <div class="panel">
+    <div class="panel-title">Hardware Efficiency <span class="badge">TinyXPU systolic array</span></div>
+
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">PE Utilization <span style="font-weight:400;color:#8c959f">(array mapping × startup overhead)</span></span>
+        <span class="hw-metric-val" id="hwUtil">—</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="hwUtilBar" style="width:0%"></div></div>
+    </div>
+
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">Array mapping <span style="font-weight:400;color:#8c959f">(K×N PEs doing useful work)</span></span>
+        <span class="hw-metric-val" id="hwSpatial">—</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="hwSpatialBar" style="width:0%"></div></div>
+    </div>
+
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">Startup overhead <span style="font-weight:400;color:#8c959f">(M / (M + HW_ROWS + N − 2))</span></span>
+        <span class="hw-metric-val" id="hwTemporal">—</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="hwTemporalBar" style="width:0%"></div></div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">Throughput <span style="font-weight:400;color:#8c959f">(vs peak array MACs/cycle)</span></span>
+        <span class="hw-metric-val"><span id="hwThroughput">—</span> <span style="font-weight:400;font-size:0.75rem;color:#8c959f">MACs/cyc</span></span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="hwThroughputBar" style="width:0%"></div></div>
+    </div>
+
+    <div class="hw-metric">
+      <div class="hw-metric-header">
+        <span class="hw-metric-name">Inference latency <span style="font-weight:400;color:#8c959f">(higher = worse)</span></span>
+        <span class="hw-metric-val"><span id="hwLatency">—</span> <span style="font-weight:400;font-size:0.75rem;color:#8c959f">cycles</span></span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="hwLatencyBar" style="width:0%"></div></div>
+    </div>
+
+    <canvas id="rooflineCanvas" width="280" height="160"></canvas>
+
+    <table class="layer-table">
+      <thead><tr><th>Layer</th><th>Shape</th><th>Params</th></tr></thead>
+      <tbody id="layerTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Insight callout -->
+<div class="insight" id="insightBox">Adjust the controls above to explore the tradeoff.</div>
+
+<script src="nn.js"></script>
+<script src="rendering.js"></script>
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+const state = {
+  depth: 2,
+  width: 16,
+  arrayRows: 16,
+  arrayCols: 16,
+  task: 'sine',
+};
+
+let trainTimer = null;
+let lastLoss = null;
+let lastSteps = 0;
+
+// ─── Training loop ────────────────────────────────────────────────────────────
+let currentNet = null;
+let dataset = null;
+let trainStep = 0;
+const MAX_STEPS = 2000;
+const STEPS_PER_TICK = 25;
+const CONV_THRESHOLD = 1e-4; // stop if loss improves less than this over 100 steps
+const CONV_TICKS = 4;        // 4 ticks × 25 steps = 100-step window
+let lossHistory = [];
+
+function startTraining() {
+  if (trainTimer) clearTimeout(trainTimer);
+  showOverlay(true);
+
+  dataset = genDataset(state.task);
+  currentNet = makeNet(1, state.width, state.depth, 1);
+  trainStep = 0;
+  lastLoss = null;
+  lossHistory = [];
+  document.getElementById('statSteps').textContent = '0';
+
+  trainTick();
+}
+
+function trainTick() {
+  if (!currentNet || !dataset) return;
+  const { xs, ys } = dataset;
+  let totalLoss = 0;
+  const end = Math.min(trainStep + STEPS_PER_TICK, MAX_STEPS);
+
+  for (let step = trainStep; step < end; step++) {
+    for (let i = 0; i < xs.length; i++) {
+      const cache = forward(currentNet, xs[i]);
+      const pred = cache[cache.length - 1].a;
+      totalLoss += loss(pred, ys[i]);
+      backward(currentNet, cache, ys[i], 0.01);
+    }
+  }
+  trainStep = end;
+  lastLoss = totalLoss / (STEPS_PER_TICK * xs.length);
+  lastSteps = trainStep;
+  lossHistory.push(lastLoss);
+
+  document.getElementById('statSteps').textContent = trainStep;
+
+  const converged = lossHistory.length > CONV_TICKS &&
+    Math.abs(lossHistory[lossHistory.length - 1 - CONV_TICKS] - lastLoss) < CONV_THRESHOLD;
+
+  if (trainStep < MAX_STEPS && !converged) {
+    trainTimer = setTimeout(trainTick, 0);
+  } else {
+    showOverlay(false);
+    renderML();
+    updateHW();
+    updateInsight();
+  }
+}
+
+function showOverlay(show) {
+  const el = document.getElementById('trainingOverlay');
+  el.classList.toggle('hidden', !show);
+}
+
+// ─── Control wiring ───────────────────────────────────────────────────────────
+function activateBtn(groupId, key, val) {
+  document.querySelectorAll(`#${groupId} .btn`).forEach(b => {
+    b.classList.toggle('active', b.dataset[key] == val);
+  });
+}
+
+document.getElementById('depthSlider').addEventListener('input', e => {
+  state.depth = +e.target.value;
+  document.getElementById('depthVal').textContent = state.depth;
+  scheduleRetrain();
+});
+
+document.getElementById('widthBtns').addEventListener('click', e => {
+  const b = e.target.closest('.btn');
+  if (!b) return;
+  state.width = +b.dataset.w;
+  activateBtn('widthBtns', 'w', state.width);
+  scheduleRetrain();
+});
+
+document.getElementById('arrayBtns').addEventListener('click', e => {
+  const b = e.target.closest('.btn');
+  if (!b) return;
+  state.arrayRows = +b.dataset.r;
+  state.arrayCols = +b.dataset.c;
+  activateBtn('arrayBtns', 'r', state.arrayRows);
+  updateHW();
+  updateInsight();
+});
+
+document.getElementById('taskBtns').addEventListener('click', e => {
+  const b = e.target.closest('.btn');
+  if (!b) return;
+  state.task = b.dataset.t;
+  activateBtn('taskBtns', 't', state.task);
+  scheduleRetrain();
+});
+
+let retrainTimeout = null;
+function scheduleRetrain() {
+  drawNetDiagram();
+  if (retrainTimeout) clearTimeout(retrainTimeout);
+  retrainTimeout = setTimeout(startTraining, 80);
+}
+
+// Initial render
+updateHW();
+drawNetDiagram();
+startTraining();
+</script>
+</body>
+</html>

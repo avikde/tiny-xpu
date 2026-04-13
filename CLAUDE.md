@@ -54,3 +54,15 @@ cd build && ctest --verbose
 - **Array:** Input skewing staggers row `k` by `k` cycles. Output de-skewing aligns all columns to the same valid tick. This gives near-100% MAC utilization as M grows.
 - **EP flow:** `MatMulInteger(X[M,K], W[K,N])` → tile if needed → load weights (`weight_ld`) → stream activations (`en`) → collect `acc_out`.
 - ONNX Runtime installed at `/opt/onnxruntime`.
+
+## Web Tool (`web/`)
+
+Single-file `web/index.html` — no build step, no dependencies. `web/serve.js` is a minimal Node.js static server for local testing.
+
+**Neural net:** vanilla JS backprop, SGD lr=0.01, 500 steps, Xavier init. Tasks use a fixed seed so results are reproducible. Sine task uses 1D input `[x]`; spiral uses 2D `[x, y]` — `makeNet` and `countParams` branch on `state.task` accordingly.
+
+**Rendering:** Spiral decision boundary samples a 300×300 canvas at 5px grid (3600 forward passes). Sine renders a 1D line plot (300 forward passes) — much cheaper. The roofline canvas is a log-log plot drawn with the Canvas 2D API; it re-renders on every control change without retraining.
+
+**HW metrics** are pure arithmetic — no simulation. Bandwidth assumption is hardcoded at `BW_BYTES_PER_CYCLE = 16` B/cycle (matches `scripts/plot_roofline.py`). Batch size is hardcoded at `BATCH = 64`.
+
+**Deployment:** `.github/workflows/pages.yml` deploys `web/` to GitHub Pages on push to `main`. The Pages environment is restricted to `main` only — do not add other branches to the workflow trigger.
