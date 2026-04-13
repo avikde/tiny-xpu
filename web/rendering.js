@@ -110,7 +110,7 @@ function hwMetrics() {
   const latencyPerLayer = arrayRows + N - 2; // pipeline latency: first in → last out
   const totalLatency = depth * latencyPerLayer;
   const ai = (M * N) / (N + M); // MACs/byte, weight-stationary hidden layer
-  return { spatial, temporal, overall, peakMacs, throughput, totalLatency, ai, seqMatmuls: depth };
+  return { spatial, temporal, overall, peakMacs, throughput, totalLatency, ai };
 }
 
 function barColor(v) {
@@ -128,11 +128,10 @@ function setBar(barId, valId, v) {
 
 function updateHW() {
   const m = hwMetrics();
-  const { spatial, temporal, overall, peakMacs, throughput, totalLatency, ai, seqMatmuls } = m;
+  const { spatial, temporal, overall, peakMacs, throughput, totalLatency, ai } = m;
   setBar('hwUtilBar', 'hwUtil', overall);
   setBar('hwSpatialBar', 'hwSpatial', spatial);
   setBar('hwTemporalBar', 'hwTemporal', temporal);
-  document.getElementById('hwMatmuls').textContent = seqMatmuls;
   document.getElementById('hwThroughput').textContent = throughput.toFixed(1);
   document.getElementById('hwLatency').textContent = totalLatency.toLocaleString();
 
@@ -259,7 +258,7 @@ function drawRoofline(peakMacs, throughput, ai) {
 // ─── Insight callout ──────────────────────────────────────────────────────────
 function updateInsight() {
   const { depth, width, arrayRows, arrayCols } = state;
-  const { overall, seqMatmuls } = hwMetrics();
+  const { overall } = hwMetrics();
   const params = countParams(depth, width);
   const lossStr = lastLoss != null ? Math.log10(lastLoss).toFixed(2) : '?';
 
@@ -277,9 +276,10 @@ function updateInsight() {
       const diff = Math.abs(countParams(twinDepth, w) - params);
       if (diff < bestDiff) { bestDiff = diff; bestW = w; }
     }
-    const twinSpatial = Math.min(bestW, arrayCols) / arrayCols;
-    const twinUtil = twinSpatial * (BATCH / (BATCH + arrayRows + bestW - 2));
-    twinMsg = ` A <strong>1-hidden-layer width-${bestW}</strong> network has ~${countParams(twinDepth, bestW).toLocaleString()} params and runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with only 1 sequential matmul.`;
+    const twinSpatialCols = Math.min(bestW, arrayCols) / arrayCols;
+    const twinSpatialRows = Math.min(bestW, arrayRows) / arrayRows;
+    const twinUtil = twinSpatialCols * twinSpatialRows * (BATCH / (BATCH + arrayRows + bestW - 2));
+    twinMsg = ` For similar capacity (~${countParams(twinDepth, bestW).toLocaleString()} params), a <strong>1-hidden-layer width-${bestW}</strong> network runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with only 1 sequential matmul — but may underfit.`;
   } else {
     const twinDepth = 5;
     let bestW = 4, bestDiff = Infinity;
@@ -287,9 +287,10 @@ function updateInsight() {
       const diff = Math.abs(countParams(twinDepth, w) - params);
       if (diff < bestDiff) { bestDiff = diff; bestW = w; }
     }
-    const twinSpatial = Math.min(bestW, arrayCols) / arrayCols;
-    const twinUtil = twinSpatial * (BATCH / (BATCH + arrayRows + bestW - 2));
-    twinMsg = ` A <strong>5-hidden-layer width-${bestW}</strong> network has ~${countParams(twinDepth, bestW).toLocaleString()} params and runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with 5 sequential matmuls.`;
+    const twinSpatialCols = Math.min(bestW, arrayCols) / arrayCols;
+    const twinSpatialRows = Math.min(bestW, arrayRows) / arrayRows;
+    const twinUtil = twinSpatialCols * twinSpatialRows * (BATCH / (BATCH + arrayRows + bestW - 2));
+    twinMsg = ` For similar capacity (~${countParams(twinDepth, bestW).toLocaleString()} params), a <strong>5-hidden-layer width-${bestW}</strong> network runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with 5 sequential matmuls — but may be harder to train.`;
   }
 
   const { throughput, totalLatency, ai, peakMacs } = hwMetrics();
@@ -299,7 +300,7 @@ function updateInsight() {
     `This <strong>${profile}</strong> network (${params.toLocaleString()} params, ${depth} hidden layers) achieves log&#8321;&#8320; loss <strong>${lossStr}</strong>. ` +
     `On the ${arrayRows}×${arrayCols} array it runs at <strong>${throughput.toFixed(1)} MACs/cycle</strong> (${(overall * 100).toFixed(0)}% of peak ${peakMacs}) — ${utilLabel}, ` +
     `<strong>${memBound ? 'memory-bound' : 'compute-bound'}</strong> (AI = ${ai.toFixed(1)} MACs/byte). ` +
-    `Full inference: <strong>${seqMatmuls} matmul${seqMatmuls > 1 ? 's' : ''}</strong>, <strong>${totalLatency} cycles</strong> total.` +
+    `Pipeline latency: <strong>${totalLatency} cycles</strong> (${depth} layer${depth > 1 ? 's' : ''} × ${arrayRows + width - 2} cycles/layer). ` +
     twinMsg;
 }
 
