@@ -24,8 +24,8 @@ async def reset_dut(dut):
     dut.weight_ld.value = 0
     for r in range(ROWS):
         dut.data_in[r].value = 0
-        for c in range(COLS):
-            dut.weight_in[r * COLS + c].value = 0
+    for c in range(COLS):
+        dut.weight_in_top[c].value = 0
     for c in range(COLS):
         dut.bias_in[c].value = 0
     await ClockCycles(dut.clk, 3)
@@ -34,14 +34,18 @@ async def reset_dut(dut):
 
 
 async def load_weights(dut, B):
-    """Load a ROWS×COLS weight matrix (nested list or 2-D numpy array)."""
+    """Load weights via systolic cascade from top edge over ROWS cycles.
+
+    At cycle t (0-indexed), row t of B is driven at the top and cascades down.
+    After ROWS cycles, all PEs have their weights.
+    """
     dut.weight_ld.value = 1
-    for r in range(ROWS):
+    for load_row in range(ROWS):
         for c in range(COLS):
-            dut.weight_in[r * COLS + c].value = int(B[r][c])
-    await RisingEdge(dut.clk)
+            dut.weight_in_top[c].value = int(B[load_row][c])
+        await RisingEdge(dut.clk)
     dut.weight_ld.value = 0
-    await RisingEdge(dut.clk)  # let weights settle
+    await RisingEdge(dut.clk)  # let bottom row settle
 
 
 async def stream_and_collect(dut, A):

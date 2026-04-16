@@ -861,22 +861,21 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
                              ? static_cast<uint32_t>(info->bias[c]) : 0u;
         }
         for (int k = 0; k < HW_ROWS; ++k) arr.data_in[k] = 0;
-        for (int r = 0; r < HW_ROWS; ++r)
-            for (int c = 0; c < HW_COLS; ++c)
-                arr.weight_in[r * HW_COLS + c] = 0;
+        for (int c = 0; c < HW_COLS; ++c) arr.weight_in_top[c] = 0;
         arr.eval();
         for (int i = 0; i < 3; ++i) { tick(); obs.ticks_reset++; }
         arr.rst_n = 1;
         tick();
 
         arr.weight_ld = 1;
-        for (int r = 0; r < HW_ROWS; ++r)
+        for (int load_row = 0; load_row < HW_ROWS; ++load_row) {
             for (int c = 0; c < HW_COLS; ++c) {
-                int8_t w = (r < K_sl && c < N_sl) ? B_sl[r * N_sl + c] : 0;
-                arr.weight_in[r * HW_COLS + c] = static_cast<uint8_t>(w);
-                if (r < K_sl && c < N_sl) obs.weight_writes++;
+                int8_t w = (load_row < K_sl && c < N_sl) ? B_sl[load_row * N_sl + c] : 0;
+                arr.weight_in_top[c] = static_cast<int8_t>(w);
+                if (load_row < K_sl && c < N_sl) obs.weight_writes++;
             }
-        tick(); obs.ticks_weight_load++;
+            tick(); obs.ticks_weight_load++;
+        }
         arr.weight_ld = 0;
         tick(); obs.ticks_weight_load++;
 

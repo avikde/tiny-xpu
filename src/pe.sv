@@ -10,18 +10,15 @@ module pe #(
     input  logic                    clk,
     input  logic                    rst_n,
     input  logic                    en,
+    input  logic                    weight_ld,
 
-    // Data flowing through the systolic array
     input  logic signed [DATA_WIDTH-1:0] data_in,
     output logic signed [DATA_WIDTH-1:0] data_out,
 
-    // Weight (stationary)
-    input  logic signed [DATA_WIDTH-1:0] weight_in,
-    // control signal "weight load"
-    // When high, the PE latches weight_in into its internal weight_r register.
-    input  logic                         weight_ld,
-
-    // Partial sum cascade
+    // Partial sum cascade (DUAL-USE: also carries weights during weight_ld=1)
+    // When weight_ld=1: acc_in carries 8-bit weight from PE above, latched into
+    // weight_r, and cascaded down through acc_out to PE below.
+    // When weight_ld=0: normal int32 accumulator for MAC operation.
     input  logic signed [ACC_WIDTH-1:0]  acc_in,
     output logic signed [ACC_WIDTH-1:0]  acc_out
 );
@@ -39,10 +36,11 @@ module pe #(
             data_out <= '0;
             acc_out  <= '0;
         end else begin
-            if (weight_ld)
-                weight_r <= weight_in;
-
-            if (en) begin
+            if (weight_ld) begin
+                weight_r <= acc_in[DATA_WIDTH-1:0];
+                acc_out  <= {{(ACC_WIDTH-DATA_WIDTH){acc_in[DATA_WIDTH-1]}},
+                              acc_in[DATA_WIDTH-1:0]};
+            end else if (en) begin
                 data_out <= data_in;
                 acc_out  <= acc_in + mult_result;
             end

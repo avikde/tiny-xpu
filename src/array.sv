@@ -44,12 +44,11 @@ module array #(
     // Activation outputs — rightmost column passthrough (useful for chaining)
     output logic signed [DATA_WIDTH-1:0] data_out [ROWS],
 
-    // Weight loading — broadcast ld signal, individual value per PE.
-    // Flattened to 1-D (row-major: index = r*COLS + c) so VPI/cocotb can
-    // address each element directly; 2-D unpacked ports get merged into a
-    // packed vector by iverilog's VPI layer and can't be sub-indexed.
+    // Weight loading — systolic cascade from top edge.
+    // When weight_ld=1: weight_in_top[c] enters row 0, cascades down over ROWS cycles.
+    // When weight_ld=0: acc_wire[0] is '0 (normal accumulation).
     input  logic                         weight_ld,
-    input  logic signed [DATA_WIDTH-1:0] weight_in [ROWS*COLS],
+    input  logic signed [DATA_WIDTH-1:0] weight_in_top [COLS],
 
     // Accumulated results from the bottom row, one per column.
     // Not de-skewed: acc_out[c] for output row i is valid at cycle i + ROWS + c
@@ -85,7 +84,10 @@ module array #(
             assign data_out[r_b] = data_wire[r_b][COLS];
         end
         for (c_b = 0; c_b < COLS; c_b++) begin : gen_acc_top
-            assign acc_wire[0][c_b] = '0;
+            assign acc_wire[0][c_b] = weight_ld
+                ? {{(ACC_WIDTH-DATA_WIDTH){weight_in_top[c_b][DATA_WIDTH-1]}},
+                   weight_in_top[c_b]}
+                : '0;
         end
     endgenerate
 
@@ -116,10 +118,9 @@ module array #(
                     .clk       (clk),
                     .rst_n     (rst_n),
                     .en        (en),
+                    .weight_ld (weight_ld),
                     .data_in   (data_wire[r][c]),
                     .data_out  (data_wire[r][c+1]),
-                    .weight_in (weight_in[r*COLS + c]),
-                    .weight_ld (weight_ld),
                     .acc_in    (acc_wire[r][c]),
                     .acc_out   (acc_wire[r+1][c])
                 );
