@@ -288,6 +288,20 @@ input[type=range] {
       <button class="btn" data-t="square">Square wave</button>
     </div>
   </div>
+
+  <div class="ctrl-group">
+    <span class="ctrl-label">TinyXPU Options</span>
+    <div style="display:flex; flex-direction:column; gap:6px; font-size:0.78rem; color:#1f2328;">
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" id="optDoubleBuffer" checked>
+        <span>Double-buffer weights</span>
+      </label>
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" id="optOutputTaps" checked>
+        <span>Output taps at 8/12/16</span>
+      </label>
+    </div>
+  </div>
 </div>
 
 <div class="panels">
@@ -392,6 +406,8 @@ const state = {
   arrayRows: 16,
   arrayCols: 16,
   task: 'sine',
+  tinyxpuDoubleBuffer: true,
+  tinyxpuOutputTaps: true,
 };
 
 let trainTimer = null;
@@ -498,6 +514,18 @@ document.getElementById('taskBtns').addEventListener('click', e => {
   state.task = b.dataset.t;
   activateBtn('taskBtns', 't', state.task);
   scheduleRetrain();
+});
+
+document.getElementById('optDoubleBuffer').addEventListener('change', e => {
+  state.tinyxpuDoubleBuffer = e.target.checked;
+  updateHW();
+  updateInsight();
+});
+
+document.getElementById('optOutputTaps').addEventListener('change', e => {
+  state.tinyxpuOutputTaps = e.target.checked;
+  updateHW();
+  updateInsight();
 });
 
 let retrainTimeout = null;

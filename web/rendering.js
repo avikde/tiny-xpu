@@ -114,7 +114,7 @@ const HW_VARIANTS = [
 ];
 
 function hwMetricsAll() {
-  const { width, depth, arrayRows, arrayCols } = state;
+  const { width, depth, arrayRows, arrayCols, tinyxpuDoubleBuffer, tinyxpuOutputTaps } = state;
   const M = BATCH;
   const peakMacs = arrayRows * arrayCols;
 
@@ -132,20 +132,60 @@ function hwMetricsAll() {
     let weightLoadCycles = 0;
     let computeCycles = 0;
 
+    const isTinyXPU = variant.key === 'tinyxpu';
+
     layerDims.forEach(({ K, N }) => {
-      // MACs for this layer
+      // Calculate tiling dimensions
+      const tilesK = Math.ceil(K / arrayRows);  // Tiles in K dimension (rows)
+      const tilesN = Math.ceil(N / arrayCols);  // Tiles in N dimension (cols)
+      const totalTiles = tilesK * tilesN;
+
+      // MACs for this layer (same regardless of tiling)
       const macs = M * K * N;
       totalMacs += macs;
 
-      // Compute cycles: M + ROWS + N (simplified formula)
-      const layerCompute = M + arrayRows + N;
-      computeCycles += layerCompute;
+      // Determine tile dimensions (last tile may be smaller)
+      const tileKEffective = Math.min(K, arrayRows);
+      
+      // Determine effective ROWS for each tile (output taps for TinyXPU)
+      let effectiveRows = arrayRows;
+      if (isTinyXPU && tinyxpuOutputTaps && tileKEffective < arrayRows) {
+        const taps = [8, 12, 16].filter(t => t <= arrayRows);
+        for (const tap of taps) {
+          if (tap >= tileKEffective) {
+            effectiveRows = tap;
+            break;
+          }
+        }
+      }
 
-      // Weight loading: K cycles (if variant has separate weight loading)
-      const layerWeightLoad = variant.hasWeightLoading ? K : 0;
+      // Calculate cycles per tile
+      let cyclesPerTile = 0;
+      let weightLoadPerTile = 0;
+
+      if (isTinyXPU) {
+        // TinyXPU with cascade-style weight loading
+        if (tinyxpuDoubleBuffer) {
+          // Full overlap: max(M, tileK) + effectiveRows per tile
+          cyclesPerTile = Math.max(M, tileKEffective) + effectiveRows;
+        } else {
+          // Partial overlap: M + tileK + 1 + effectiveRows per tile
+          cyclesPerTile = M + tileKEffective + 1 + effectiveRows;
+        }
+        weightLoadPerTile = tileKEffective;
+      } else {
+        // TPU-like: separate weight loading phase
+        cyclesPerTile = M + effectiveRows + tileKEffective + effectiveRows;
+        weightLoadPerTile = tileKEffective;
+      }
+
+      // Total cycles for all tiles (tiles run sequentially on same array)
+      const layerCycles = cyclesPerTile * totalTiles;
+      const layerWeightLoad = weightLoadPerTile * totalTiles;
+
+      computeCycles += layerCycles - layerWeightLoad;
       weightLoadCycles += layerWeightLoad;
-
-      totalCycles += layerCompute + layerWeightLoad;
+      totalCycles += layerCycles;
     });
 
     const throughput = totalMacs / totalCycles;  // MACs per cycle
@@ -242,15 +282,30 @@ function updateHW() {
 
   drawRoofline(metrics);
 
-  // Layer table
+  // Layer table with tiling info
   const tbody = document.getElementById('layerTable');
   tbody.innerHTML = '';
-  const { depth, width } = state;
+  const { depth, width, arrayRows, arrayCols } = state;
   const shapes = [[1, width], ...Array(depth - 1).fill([width, width]), [width, 1]];
+  
   shapes.forEach(([inn, out], i) => {
     const p = inn * out + out;
+    const K = inn;
+    const N = out;
+    
+    // Calculate tiling
+    const tilesK = Math.ceil(K / arrayRows);
+    const tilesN = Math.ceil(N / arrayCols);
+    const totalTiles = tilesK * tilesN;
+    
+    // Build tiling annotation
+    let tilingInfo = '';
+    if (totalTiles > 1) {
+      tilingInfo = ` <span style="color:#9a6700; font-size:0.7em;">(${tilesK}×${tilesN} tiles)</span>`;
+    }
+    
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>L${i + 1}</td><td>${inn}→${out}</td><td>${p.toLocaleString()}</td>`;
+    tr.innerHTML = `<td>L${i + 1}</td><td>${inn}→${out}${tilingInfo}</td><td>${p.toLocaleString()}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -362,9 +417,9 @@ function drawRoofline(allMetrics) {
     const px = lx(m.ai);
     const py = ly(m.throughput);
 
-    // Draw dot with variant color
+    // Draw dot with variant color (smaller radius = 3 to avoid overlap)
     ctx.beginPath();
-    ctx.arc(px, py, 5, 0, 2 * Math.PI);
+    ctx.arc(px, py, 3, 0, 2 * Math.PI);
     ctx.fillStyle = m.color;
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
@@ -376,7 +431,7 @@ function drawRoofline(allMetrics) {
     ctx.font = 'bold 9px -apple-system, sans-serif';
     ctx.textAlign = 'left';
     const labelOffset = idx === 0 ? -10 : 8;
-    ctx.fillText(m.name, px + 8, py + labelOffset);
+    ctx.fillText(m.name, px + 6, py + labelOffset);
   });
 }
 
@@ -394,11 +449,21 @@ function updateInsight() {
 
   const memBound = tinyxpu.ai < tinyxpu.peakMacs / BW_BYTES_PER_CYCLE;
 
+  // Check if tiling is needed for hidden layers
+  const needsTiling = width > arrayRows || width > arrayCols;
+  let tilingMsg = '';
+  if (needsTiling) {
+    const tilesK = Math.ceil(width / arrayRows);
+    const tilesN = Math.ceil(width / arrayCols);
+    tilingMsg = ` <strong style="color:#d1242f;">Requires ${tilesK}×${tilesN} tiling</strong> (width > array). `;
+  }
+
   document.getElementById('insightBox').innerHTML =
     `This <strong>${depth}-layer width-${width}</strong> network (${params.toLocaleString()} params) achieves log&#8321;&#8320; loss <strong>${lossStr}</strong>. ` +
     `On the ${arrayRows}×${arrayCols} array: ` +
     `<span style="color:${tinyxpu.color}"><strong>TinyXPU</strong>: ${tinyxpu.throughput.toFixed(1)} MACs/cyc, ${tinyxpu.totalCycles.toLocaleString()} cycles</span> vs ` +
     `<span style="color:${tpu.color}"><strong>TPU-like</strong>: ${tpu.throughput.toFixed(1)} MACs/cyc, ${tpu.totalCycles.toLocaleString()} cycles</span>. ` +
+    tilingMsg +
     `Weight loading adds <strong>${slowdown}%</strong> latency overhead. ` +
     `<strong>${memBound ? 'Memory-bound' : 'Compute-bound'}</strong> (AI = ${tinyxpu.ai.toFixed(1)} MACs/byte).`;
 }
