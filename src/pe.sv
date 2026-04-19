@@ -25,6 +25,7 @@ module pe #(
 
     // weight_r is signed [7:0], an 8-bit signed value (range -128 to +127, i.e. int8)
     logic signed [DATA_WIDTH-1:0] weight_r;
+    logic weight_valid;  // Set when weight loaded, cleared when weight_ld goes low
     // data_in is signed [7:0] 
     logic signed [ACC_WIDTH-1:0]  mult_result;
     // The result is assigned to mult_result which is signed [31:0]
@@ -33,16 +34,26 @@ module pe #(
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             weight_r <= '0;
+            weight_valid <= 1'b0;
             data_out <= '0;
             acc_out  <= '0;
         end else begin
             if (weight_ld) begin
-                weight_r <= acc_in[DATA_WIDTH-1:0];
-                acc_out  <= {{(ACC_WIDTH-DATA_WIDTH){acc_in[DATA_WIDTH-1]}},
-                              acc_in[DATA_WIDTH-1:0]};
-            end else if (en) begin
-                data_out <= data_in;
-                acc_out  <= acc_in + mult_result;
+                // Cascade weight down regardless
+                acc_out <= {{(ACC_WIDTH-DATA_WIDTH){acc_in[DATA_WIDTH-1]}},
+                           acc_in[DATA_WIDTH-1:0]};
+                // Only latch weight on first cycle of weight_ld (when not yet valid)
+                if (!weight_valid) begin
+                    weight_r <= acc_in[DATA_WIDTH-1:0];
+                    weight_valid <= 1'b1;
+                end
+            end else begin
+                // weight_ld is low: clear valid flag for next load session
+                weight_valid <= 1'b0;
+                if (en) begin
+                    data_out <= data_in;
+                    acc_out  <= acc_in + mult_result;
+                end
             end
         end
     end

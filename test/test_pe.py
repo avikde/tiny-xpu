@@ -13,8 +13,7 @@ async def reset_dut(dut):
     dut.en.value = 0
     dut.weight_ld.value = 0
     dut.data_in.value = 0
-    dut.weight_in.value = 0
-    dut.acc_in.value = 0
+    dut.acc_in.value = 0  # Dual-use: acc_in carries weight during weight_ld=1
     await ClockCycles(dut.clk, 3)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
@@ -34,13 +33,14 @@ async def test_reset(dut):
 
 @cocotb.test()
 async def test_weight_load(dut):
-    """Loading a weight should latch the value."""
+    """Loading a weight via acc_in should latch the value."""
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
     await reset_dut(dut)
 
-    dut.weight_in.value = 5
+    # Load weight = 5 via acc_in (dual-use: weight_ld=1 means acc_in carries weight)
+    dut.acc_in.value = 5
     dut.weight_ld.value = 1
     await RisingEdge(dut.clk)
     dut.weight_ld.value = 0
@@ -68,8 +68,8 @@ async def test_mac_accumulate(dut):
 
     await reset_dut(dut)
 
-    # Load weight = 4
-    dut.weight_in.value = 4
+    # Load weight = 4 via acc_in (dual-use during weight_ld=1)
+    dut.acc_in.value = 4
     dut.weight_ld.value = 1
     await RisingEdge(dut.clk)
     dut.weight_ld.value = 0
@@ -112,8 +112,8 @@ async def test_enable_gating(dut):
 
     await reset_dut(dut)
 
-    # Do one enabled cycle
-    dut.weight_in.value = 2
+    # Do one enabled cycle: load weight = 2 via acc_in
+    dut.acc_in.value = 2
     dut.weight_ld.value = 1
     await RisingEdge(dut.clk)
     dut.weight_ld.value = 0

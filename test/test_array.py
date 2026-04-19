@@ -37,7 +37,8 @@ async def load_weights(dut, B):
     """Load weights via systolic cascade from top edge over ROWS cycles.
 
     At cycle t (0-indexed), row t of B is driven at the top and cascades down.
-    After ROWS cycles, all PEs have their weights.
+    After weight_ld=0, weights need ROWS more cycles to cascade to the bottom row.
+    Returns when all PEs have their weights.
     """
     dut.weight_ld.value = 1
     for load_row in range(ROWS):
@@ -45,7 +46,8 @@ async def load_weights(dut, B):
             dut.weight_in_top[c].value = int(B[load_row][c])
         await RisingEdge(dut.clk)
     dut.weight_ld.value = 0
-    await RisingEdge(dut.clk)  # let bottom row settle
+    # Weights continue cascading down for ROWS cycles after ld goes low
+    await ClockCycles(dut.clk, ROWS)
 
 
 async def stream_and_collect(dut, A):
@@ -109,6 +111,48 @@ async def test_reset(dut):
         assert dut.acc_out[c].value.to_signed() == 0, (
             f"acc_out[{c}] not zero after reset"
         )
+
+
+@cocotb.test()
+async def test_weight_cascade_debug(dut):
+    """Debug: Trace weight loading cascade step by step."""
+    clock = Clock(dut.clk, 10, unit="ns")
+    cocotb.start_soon(clock.start())
+
+    await reset_dut(dut)
+    
+    # Simple 4x4 identity for debugging (we only need first 4 rows/cols visible)
+    cocotb.log.info("=== Weight Cascade Debug ===")
+    
+    dut.weight_ld.value = 1
+    for load_row in range(4):
+        for c in range(COLS):
+            val = 1 if load_row == c else 0  # Identity pattern
+            dut.weight_in_top[c].value = val
+        cocotb.log.info(f"Cycle {load_row}: Driving weight row {load_row} at top")
+        await RisingEdge(dut.clk)
+        # Check acc_wire[0] after the edge
+        acc0 = dut.acc_out[0].value.to_signed() if hasattr(dut.acc_out[0], 'value') else 0
+        cocotb.log.info(f"  After edge: acc_out[0] = {acc0}")
+    
+    dut.weight_ld.value = 0
+    cocotb.log.info("weight_ld = 0, cascading remaining rows...")
+    for i in range(ROWS):
+        await RisingEdge(dut.clk)
+        acc0 = dut.acc_out[0].value.to_signed() if hasattr(dut.acc_out[0], 'value') else 0
+        cocotb.log.info(f"  Settle cycle {i}: acc_out[0] = {acc0}")
+    
+    # Now stream a simple input and check output
+    cocotb.log.info("=== Streaming Input [1,0,0,0,...] ===")
+    dut.en.value = 1
+    dut.data_in[0].value = 1
+    for i in range(COLS + ROWS + 5):
+        await RisingEdge(dut.clk)
+        acc_vals = [dut.acc_out[c].value.to_signed() for c in range(min(4, COLS))]
+        cocotb.log.info(f"  Cycle {i}: acc_out[0:3] = {acc_vals}")
+    
+    dut.en.value = 0
+    cocotb.log.info("=== Debug Complete ===")
 
 
 @cocotb.test()
