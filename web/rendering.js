@@ -93,26 +93,87 @@ function render1D(ctx, targetFn) {
 }
 
 // ─── HW Panel ────────────────────────────────────────────────────────────────
-const BATCH = 1000;
+const BATCH = 64;
 
 const BW_BYTES_PER_CYCLE = 16; // SRAM bandwidth assumption
 
-function hwMetrics() {
+// Hardware variants to compare
+const HW_VARIANTS = [
+  {
+    name: 'TinyXPU',
+    key: 'tinyxpu',
+    color: '#0969da',      // Blue
+    hasWeightLoading: false
+  },
+  {
+    name: 'TPU-like',
+    key: 'tpu',
+    color: '#9a6700',      // Amber/Orange
+    hasWeightLoading: true
+  }
+];
+
+function hwMetricsAll() {
   const { width, depth, arrayRows, arrayCols } = state;
-  const M = BATCH, N = width;
+  const M = BATCH;
   const peakMacs = arrayRows * arrayCols;
-  const spatialCols = Math.min(width, arrayCols) / arrayCols;  // N fills columns
-  const spatialRows = Math.min(width, arrayRows) / arrayRows;  // K fills rows
-  const spatial = spatialCols * spatialRows;
-  const temporal = M / (M + arrayRows + N - 2);
-  const overall = spatial * temporal;
-  const throughput = overall * peakMacs;
-  const latencyPerLayer = arrayRows + N - 2; // pipeline latency: first in → last out
-  const totalLatency = depth * latencyPerLayer;
-  // AI = useful MACs / total bytes (weights int8 + activations int8 + outputs int32)
-  // Hidden layer: K=N=width, so weight_bytes=N², activation_bytes=M*N, output_bytes=4*M*N
-  const ai = (M * N * N) / (N * N + M * N + 4 * M * N);
-  return { spatial, temporal, overall, peakMacs, throughput, totalLatency, ai };
+
+  // Layer dimensions: [K, N] for each layer
+  const layerDims = [];
+  layerDims.push({ K: 1, N: width });  // Input layer: 1 → width
+  for (let i = 1; i < depth; i++) {
+    layerDims.push({ K: width, N: width });  // Hidden layers: width → width
+  }
+  layerDims.push({ K: width, N: 1 });  // Output layer: width → 1
+
+  return HW_VARIANTS.map(variant => {
+    let totalMacs = 0;
+    let totalCycles = 0;
+    let weightLoadCycles = 0;
+    let computeCycles = 0;
+
+    layerDims.forEach(({ K, N }) => {
+      // MACs for this layer
+      const macs = M * K * N;
+      totalMacs += macs;
+
+      // Compute cycles: M + ROWS + N (simplified formula)
+      const layerCompute = M + arrayRows + N;
+      computeCycles += layerCompute;
+
+      // Weight loading: K cycles (if variant has separate weight loading)
+      const layerWeightLoad = variant.hasWeightLoading ? K : 0;
+      weightLoadCycles += layerWeightLoad;
+
+      totalCycles += layerCompute + layerWeightLoad;
+    });
+
+    const throughput = totalMacs / totalCycles;  // MACs per cycle
+    const overallUtil = throughput / peakMacs;
+
+    // Arithmetic intensity (same for both variants)
+    const totalBytes = layerDims.reduce((sum, { K, N }) => {
+      return sum + (K * N) + (M * K) + (4 * M * N);  // weights + activations + outputs (int32)
+    }, 0);
+    const ai = totalMacs / totalBytes;
+
+    return {
+      name: variant.name,
+      key: variant.key,
+      color: variant.color,
+      totalMacs,
+      totalCycles,
+      throughput,
+      overallUtil,
+      peakMacs,
+      ai,
+      // For stacked bar breakdown
+      weightLoadCycles,
+      computeCycles,
+      weightLoadFraction: weightLoadCycles / totalCycles,
+      computeFraction: computeCycles / totalCycles
+    };
+  });
 }
 
 function barColor(v) {
@@ -135,25 +196,51 @@ function setBar(barId, valId, v) {
   document.getElementById(valId).textContent = pct + '%';
 }
 
+function renderThroughputBars(metrics) {
+  // Find max throughput for scaling
+  const maxThroughput = Math.max(...metrics.map(m => m.throughput));
+
+  const tinyxpu = metrics.find(m => m.key === 'tinyxpu');
+  const tpu = metrics.find(m => m.key === 'tpu');
+
+  // TinyXPU bar
+  const tpTinyxpuPct = (tinyxpu.throughput / maxThroughput * 100).toFixed(1);
+  document.getElementById('tpTinyxpuBar').style.width = tpTinyxpuPct + '%';
+  document.getElementById('tpTinyxpuVal').textContent = tinyxpu.throughput.toFixed(1);
+
+  // TPU-like bar
+  const tpTpuPct = (tpu.throughput / maxThroughput * 100).toFixed(1);
+  document.getElementById('tpTpuBar').style.width = tpTpuPct + '%';
+  document.getElementById('tpTpuVal').textContent = tpu.throughput.toFixed(1);
+}
+
+function renderLatencyBars(metrics) {
+  // Find max latency for scaling
+  const maxLatency = Math.max(...metrics.map(m => m.totalCycles));
+
+  const tinyxpu = metrics.find(m => m.key === 'tinyxpu');
+  const tpu = metrics.find(m => m.key === 'tpu');
+
+  // TinyXPU bar (single color - no weight loading)
+  const latTinyxpuPct = (tinyxpu.totalCycles / maxLatency * 100).toFixed(1);
+  document.getElementById('latTinyxpuBar').style.width = latTinyxpuPct + '%';
+  document.getElementById('latTinyxpuVal').textContent = tinyxpu.totalCycles.toLocaleString();
+
+  // TPU-like bar with breakdown (weight load + compute segments)
+  const tpuWlPct = (tpu.weightLoadCycles / maxLatency * 100).toFixed(1);
+  const tpuCompPct = (tpu.computeCycles / maxLatency * 100).toFixed(1);
+  document.getElementById('latTpuWlBar').style.width = tpuWlPct + '%';
+  document.getElementById('latTpuCompBar').style.width = tpuCompPct + '%';
+  document.getElementById('latTpuVal').textContent = tpu.totalCycles.toLocaleString();
+}
+
 function updateHW() {
-  const m = hwMetrics();
-  const { spatial, temporal, overall, peakMacs, throughput, totalLatency, ai } = m;
-  setBar('hwUtilBar', 'hwUtil', overall);
-  setBar('hwSpatialBar', 'hwSpatial', spatial);
-  setBar('hwTemporalBar', 'hwTemporal', temporal);
-  document.getElementById('hwThroughput').textContent = throughput.toFixed(1);
-  const tpBar = document.getElementById('hwThroughputBar');
-  tpBar.style.width = (throughput / peakMacs * 100).toFixed(1) + '%';
-  tpBar.style.background = barColor(throughput / peakMacs);
+  const metrics = hwMetricsAll();
 
-  document.getElementById('hwLatency').textContent = totalLatency.toLocaleString();
-  const maxLatency = 124;
-  const latFrac = Math.min(totalLatency / maxLatency, 1);
-  const latBar = document.getElementById('hwLatencyBar');
-  latBar.style.width = (latFrac * 100).toFixed(1) + '%';
-  latBar.style.background = latencyBarColor(latFrac);
+  renderThroughputBars(metrics);
+  renderLatencyBars(metrics);
 
-  drawRoofline(peakMacs, throughput, ai);
+  drawRoofline(metrics);
 
   // Layer table
   const tbody = document.getElementById('layerTable');
@@ -168,7 +255,7 @@ function updateHW() {
   });
 }
 
-function drawRoofline(peakMacs, throughput, ai) {
+function drawRoofline(allMetrics) {
   const canvas = document.getElementById('rooflineCanvas');
   const cssW = 280, cssH = 160;
   const ctx = hiDPI(canvas);
@@ -177,6 +264,9 @@ function drawRoofline(peakMacs, throughput, ai) {
 
   const lPad = 42, rPad = 10, tPad = 12, bPad = 28;
   const plotW = W - lPad - rPad, plotH = H - tPad - bPad;
+
+  // Use peakMacs from first metric (same for all variants)
+  const peakMacs = allMetrics[0].peakMacs;
 
   const xMin = 0.4, xMax = 512;
   const yMin = 0.4, yMax = Math.max(peakMacs * 4, 64);
@@ -223,7 +313,7 @@ function drawRoofline(peakMacs, throughput, ai) {
   ctx.fillText('MACs/cycle', 0, 0);
   ctx.restore();
 
-  const BW_HI = 64; // high-bandwidth ceiling (matches plot_roofline.py bw_hi)
+  const BW_HI = 64; // high-bandwidth ceiling
   const ridge = peakMacs / BW_BYTES_PER_CYCLE;
   const ridgeHi = peakMacs / BW_HI;
 
@@ -267,72 +357,50 @@ function drawRoofline(peakMacs, throughput, ai) {
     ctx.fillText(`${BW_BYTES_PER_CYCLE} B/cyc`, lx(xMin) + 2, ly(BW_BYTES_PER_CYCLE * xMin) - 3);
   }
 
-  // Operating point
-  const memBound = ai < ridge;
-  const ptColor = memBound ? '#d1242f' : '#1a7f37';
-  const px = lx(ai), py = ly(throughput);
-  ctx.beginPath();
-  ctx.arc(px, py, 5, 0, 2 * Math.PI);
-  ctx.fillStyle = ptColor;
-  ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  // Draw operating points for each hardware variant
+  allMetrics.forEach((m, idx) => {
+    const px = lx(m.ai);
+    const py = ly(m.throughput);
 
-  // Operating point label
-  ctx.fillStyle = ptColor;
-  ctx.font = 'bold 9px -apple-system, sans-serif';
-  ctx.textAlign = py < tPad + 20 ? 'left' : 'center';
-  ctx.fillText(memBound ? 'memory-bound' : 'compute-bound', px, py < tPad + 16 ? py + 14 : py - 8);
+    // Draw dot with variant color
+    ctx.beginPath();
+    ctx.arc(px, py, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = m.color;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Label with variant name (offset to avoid overlap)
+    ctx.fillStyle = m.color;
+    ctx.font = 'bold 9px -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    const labelOffset = idx === 0 ? -10 : 8;
+    ctx.fillText(m.name, px + 8, py + labelOffset);
+  });
 }
 
 // ─── Insight callout ──────────────────────────────────────────────────────────
 function updateInsight() {
   const { depth, width, arrayRows, arrayCols } = state;
-  const { overall } = hwMetrics();
+  const metrics = hwMetricsAll();
   const params = countParams(depth, width);
   const lossStr = lastLoss != null ? Math.log10(lastLoss).toFixed(2) : '?';
 
-  const profile = depth >= 3 ? 'deep-narrow' : 'shallow-wide';
-  const utilColor = overall >= 0.7 ? 'good' : overall >= 0.4 ? 'moderate' : 'poor';
-  const utilLabel = { good: '✓ good', moderate: '~ moderate', poor: '✗ poor' }[utilColor];
+  // Find TPU-like vs TinyXPU comparison
+  const tinyxpu = metrics.find(m => m.key === 'tinyxpu');
+  const tpu = metrics.find(m => m.key === 'tpu');
+  const slowdown = ((tpu.totalCycles / tinyxpu.totalCycles - 1) * 100).toFixed(0);
 
-  // Suggest twin
-  let twinMsg = '';
-  if (depth >= 3) {
-    const twinDepth = 1;
-    // find width with similar param count
-    let bestW = 4, bestDiff = Infinity;
-    for (const w of [4, 8, 12, 16, 24, 32]) {
-      const diff = Math.abs(countParams(twinDepth, w) - params);
-      if (diff < bestDiff) { bestDiff = diff; bestW = w; }
-    }
-    const twinSpatialCols = Math.min(bestW, arrayCols) / arrayCols;
-    const twinSpatialRows = Math.min(bestW, arrayRows) / arrayRows;
-    const twinUtil = twinSpatialCols * twinSpatialRows * (BATCH / (BATCH + arrayRows + bestW - 2));
-    twinMsg = ` For similar capacity (~${countParams(twinDepth, bestW).toLocaleString()} params), a <strong>1-hidden-layer width-${bestW}</strong> network runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with only 1 sequential matmul — but may underfit.`;
-  } else {
-    const twinDepth = 5;
-    let bestW = 4, bestDiff = Infinity;
-    for (const w of [4, 8, 12, 16, 24, 32]) {
-      const diff = Math.abs(countParams(twinDepth, w) - params);
-      if (diff < bestDiff) { bestDiff = diff; bestW = w; }
-    }
-    const twinSpatialCols = Math.min(bestW, arrayCols) / arrayCols;
-    const twinSpatialRows = Math.min(bestW, arrayRows) / arrayRows;
-    const twinUtil = twinSpatialCols * twinSpatialRows * (BATCH / (BATCH + arrayRows + bestW - 2));
-    twinMsg = ` For similar capacity (~${countParams(twinDepth, bestW).toLocaleString()} params), a <strong>5-hidden-layer width-${bestW}</strong> network runs at <strong>${(twinUtil * 100).toFixed(0)}% utilization</strong> with 5 sequential matmuls — but may be harder to train.`;
-  }
-
-  const { throughput, totalLatency, ai, peakMacs } = hwMetrics();
-  const memBound = ai < peakMacs / BW_BYTES_PER_CYCLE;
+  const memBound = tinyxpu.ai < tinyxpu.peakMacs / BW_BYTES_PER_CYCLE;
 
   document.getElementById('insightBox').innerHTML =
-    `This <strong>${profile}</strong> network (${params.toLocaleString()} params, ${depth} hidden layers) achieves log&#8321;&#8320; loss <strong>${lossStr}</strong>. ` +
-    `On the ${arrayRows}×${arrayCols} array it runs at <strong>${throughput.toFixed(1)} MACs/cycle</strong> (${(overall * 100).toFixed(0)}% of peak ${peakMacs}) — ${utilLabel}, ` +
-    `<strong>${memBound ? 'memory-bound' : 'compute-bound'}</strong> (AI = ${ai.toFixed(1)} MACs/byte). ` +
-    `Pipeline latency: <strong>${totalLatency} cycles</strong> (${depth} layer${depth > 1 ? 's' : ''} × ${arrayRows + width - 2} cycles/layer). ` +
-    twinMsg;
+    `This <strong>${depth}-layer width-${width}</strong> network (${params.toLocaleString()} params) achieves log&#8321;&#8320; loss <strong>${lossStr}</strong>. ` +
+    `On the ${arrayRows}×${arrayCols} array: ` +
+    `<span style="color:${tinyxpu.color}"><strong>TinyXPU</strong>: ${tinyxpu.throughput.toFixed(1)} MACs/cyc, ${tinyxpu.totalCycles.toLocaleString()} cycles</span> vs ` +
+    `<span style="color:${tpu.color}"><strong>TPU-like</strong>: ${tpu.throughput.toFixed(1)} MACs/cyc, ${tpu.totalCycles.toLocaleString()} cycles</span>. ` +
+    `Weight loading adds <strong>${slowdown}%</strong> latency overhead. ` +
+    `<strong>${memBound ? 'Memory-bound' : 'Compute-bound'}</strong> (AI = ${tinyxpu.ai.toFixed(1)} MACs/byte).`;
 }
 
 // ─── Network diagram ──────────────────────────────────────────────────────────

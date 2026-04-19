@@ -160,6 +160,51 @@ input[type=range] {
   transition: width 0.4s ease, background 0.4s;
 }
 
+.bar-stack {
+  display: flex;
+  height: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.bar-segment {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.hw-legend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 0.75rem;
+}
+.hw-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.hw-legend-color {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.latency-sublegend {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: #656d76;
+}
+.latency-sublegend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 12px;
+}
+.latency-sublegend-box {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+}
+
 .layer-table {
   width: 100%;
   border-collapse: collapse;
@@ -274,48 +319,55 @@ input[type=range] {
 
   <!-- HW Panel -->
   <div class="panel">
-    <div class="panel-title">Hardware Efficiency <span class="badge">TinyXPU systolic array</span></div>
+    <div class="panel-title">Hardware Comparison <span class="badge">TinyXPU vs TPU-like</span></div>
 
+    <!-- Throughput Metric -->
     <div class="hw-metric">
       <div class="hw-metric-header">
-        <span class="hw-metric-name">PE Utilization <span style="font-weight:400;color:#8c959f">(array mapping × startup overhead)</span></span>
-        <span class="hw-metric-val" id="hwUtil">—</span>
+        <span class="hw-metric-name">Throughput <span style="font-weight:400;color:#8c959f">(MACs/cycle)</span></span>
       </div>
-      <div class="bar-track"><div class="bar-fill" id="hwUtilBar" style="width:0%"></div></div>
+      <!-- TinyXPU -->
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <span style="font-size:0.7rem; color:#656d76; width:70px;">TinyXPU</span>
+        <div class="bar-track" style="flex:1;"><div class="bar-fill" id="tpTinyxpuBar" style="width:0%; background:#0969da;"></div></div>
+        <span style="font-size:0.75rem; font-weight:600; color:#0969da; width:50px; text-align:right;" id="tpTinyxpuVal">—</span>
+      </div>
+      <!-- TPU-like -->
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:0.7rem; color:#656d76; width:70px;">TPU-like</span>
+        <div class="bar-track" style="flex:1;"><div class="bar-fill" id="tpTpuBar" style="width:0%; background:#9a6700;"></div></div>
+        <span style="font-size:0.75rem; font-weight:600; color:#9a6700; width:50px; text-align:right;" id="tpTpuVal">—</span>
+      </div>
     </div>
 
+    <!-- Latency Metric -->
     <div class="hw-metric">
       <div class="hw-metric-header">
-        <span class="hw-metric-name">Array mapping <span style="font-weight:400;color:#8c959f">(K×N PEs doing useful work)</span></span>
-        <span class="hw-metric-val" id="hwSpatial">—</span>
+        <span class="hw-metric-name">Inference Latency <span style="font-weight:400;color:#8c959f">(cycles)</span></span>
       </div>
-      <div class="bar-track"><div class="bar-fill" id="hwSpatialBar" style="width:0%"></div></div>
-    </div>
-
-    <div class="hw-metric">
-      <div class="hw-metric-header">
-        <span class="hw-metric-name">Startup overhead <span style="font-weight:400;color:#8c959f">(M / (M + HW_ROWS + N − 2))</span></span>
-        <span class="hw-metric-val" id="hwTemporal">—</span>
+      <!-- TinyXPU -->
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <span style="font-size:0.7rem; color:#656d76; width:70px;">TinyXPU</span>
+        <div class="bar-track" style="flex:1;"><div class="bar-fill" id="latTinyxpuBar" style="width:0%; background:#0969da;"></div></div>
+        <span style="font-size:0.75rem; font-weight:600; color:#0969da; width:50px; text-align:right;" id="latTinyxpuVal">—</span>
       </div>
-      <div class="bar-track"><div class="bar-fill" id="hwTemporalBar" style="width:0%"></div></div>
-    </div>
-
-    <hr class="divider">
-
-    <div class="hw-metric">
-      <div class="hw-metric-header">
-        <span class="hw-metric-name">Throughput <span style="font-weight:400;color:#8c959f">(vs peak array MACs/cycle)</span></span>
-        <span class="hw-metric-val"><span id="hwThroughput">—</span> <span style="font-weight:400;font-size:0.75rem;color:#8c959f">MACs/cyc</span></span>
+      <!-- TPU-like with breakdown -->
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <span style="font-size:0.7rem; color:#656d76; width:70px;">TPU-like</span>
+        <div class="bar-track" style="flex:1; display:flex;">
+          <div id="latTpuWlBar" style="width:0%; background:#d0d7de; height:100%;"></div>
+          <div id="latTpuCompBar" style="width:0%; background:#9a6700; height:100%;"></div>
+        </div>
+        <span style="font-size:0.75rem; font-weight:600; color:#9a6700; width:50px; text-align:right;" id="latTpuVal">—</span>
       </div>
-      <div class="bar-track"><div class="bar-fill" id="hwThroughputBar" style="width:0%"></div></div>
-    </div>
-
-    <div class="hw-metric">
-      <div class="hw-metric-header">
-        <span class="hw-metric-name">Inference latency <span style="font-weight:400;color:#8c959f">(higher = worse)</span></span>
-        <span class="hw-metric-val"><span id="hwLatency">—</span> <span style="font-weight:400;font-size:0.75rem;color:#8c959f">cycles</span></span>
+      <div class="latency-sublegend">
+        <span class="latency-sublegend-item">
+          <span class="latency-sublegend-box" style="background:#d0d7de;"></span> Weight Load
+        </span>
+        <span class="latency-sublegend-item">
+          <span class="latency-sublegend-box" style="background:#9a6700;"></span> Compute
+        </span>
       </div>
-      <div class="bar-track"><div class="bar-fill" id="hwLatencyBar" style="width:0%"></div></div>
     </div>
 
     <canvas id="rooflineCanvas" width="280" height="160"></canvas>
