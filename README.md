@@ -118,13 +118,13 @@ TO FIX:
 
 ### Design enhancements for weight loading
 
-In In [TPU-like](https://arxiv.org/pdf/1704.04760) architectures, weight loading is done in a separate phase and needs the pipeline to fully drain. This adds latency. Quoting the TPU v1 paper,
+In [TPU-like](https://arxiv.org/pdf/1704.04760) architectures, weight loading is done in a separate phase and needs the pipeline to fully drain. This adds latency. Quoting the TPU v1 paper,
 
 > The weights are preloaded, and take effect with the advancing wave alongside the first data of a new block
 
 > About 35% of cycles are spent waiting for weights to load from memory into the matrix unit, which occurs during the 4 fully connected layers that run at an operational intensity of just 32
 
-The Apple Neural Engine is effectively double-buffered via SRAM banks.
+The time for a **(M, K) × (K, N)** product is **M + K + N** cycles (K cycles to fill the pipeline, M cycles of compute, N cycles to drain). With separate-phase weight loading, you must drain the pipeline and reload: gap between tiles is **M + 2K + N** cycles.
 
 #### 1. Pipelined tagged weight loading
 
@@ -144,24 +144,29 @@ The Apple Neural Engine is effectively double-buffered via SRAM banks.
 | t=8 | PE2 idle; cascade completes: `w[1]`→PE0, `w[2]`→PE1, `w[3]`→PE2. All weights updated. |
 | t=9 | First untagged bias enters; second matmul begins |
 
-The loading cascade fills the column in K cycles while the previous computation's tail drains through. If the first matmul starts at t=1, the next starts at *t = M + K + 1* (previous rows + weight cascade + 1), so the latency is **M + K** cycles.
+The loading cascade fills the column in K cycles while the previous computation's tail drains. If the first matmul starts at t=1, the next starts at *t = M + K + 1*, so the **tile-to-tile latency is M + K cycles**.
 
-**Hardware tradeoff:** Extra bit required on each north-south connection for the tag.
+**Hardware tradeoff:** Extra bit on each north-south connection for the tag.
 
 #### 2. Double-buffered weights
 
-**Idea:** Keep two weight registers per PE (active and shadow). Load the next tile's weights into the shadow buffer during computation, then atomically swap at the tile boundary.
+**Idea:** Keep two weight registers per PE (active and shadow). Load the next tile's weights into the shadow buffer during computation, then swap at the tile boundary.
 
-**Cycle analysis:**
-- Gap of **max(M, K)** cycles. PE(1,1) starts the new tile immediately after finishing the previous row, while bottom-right PEs finish the old tile using their (still-active) old weights. The switch propagates diagonally, catching each PE just as it becomes idle.
+The switch propagates diagonally, catching each PE just as it becomes idle. PE(1,1) starts the new tile immediately after finishing its previous row, while bottom-right PEs finish the old tile using their (still-active) old weights.
 
-Compare to [Tiny-TPU](https://www.tinytpu.com/): They use the same propagating control pattern (switch + accept) rather than data tagging, achieving continuous inference without the ~35% idle time from separate load phases.
+The MACs should be able to start right after each other, leading to a latency of **max(M, K)** cycles.
+
+Other systems:
+- [Tiny-TPU](https://www.tinytpu.com/) uses the same propagating control pattern (switch + accept) rather than data tagging, achieving continuous inference without the ~35% idle time from separate load phases.
+- Apple Neural Engine is effectively double-buffered via SRAM banks.
 
 **Hardware tradeoff:**
 - **2× weight registers per PE** (~16 bits vs 8 bits)
 - **Separate weight cascade** (cannot reuse `acc_in`—it's busy with partial sums)
 - **2 control bits** (switch + accept flags)
 - More control complexity, but no tag bit on data paths
+
+### Design enhancement: output taps
 
 ## Interactive MLP Explorer
 
