@@ -75,8 +75,6 @@ A `ROWS × COLS` PE grid. Dataflow is **weight-stationary**: weights load once, 
 - `data_in[ROWS]` — one int8 activation per row per cycle (internally skewed)
 - `weight_in[ROWS*COLS]`, `weight_ld` — load all weights in one cycle
 - `acc_out[COLS]` — raw int32 result per column (no de-skew)
-- `relu_en` — clamp negative `acc_out` values to zero (combinational)
-- `requant_en`, `bias_in[COLS]`, `M0`, `rshift`, `zero_pt` — drive the requantization stage
 - `q_out[COLS]` — int8 requantized output (valid when `requant_en=1`)
 
 **Input skewing:** Row `k` receives its activation `k` cycles later than row 0. For M output rows, total streaming ticks = `M + ROWS + COLS − 1` instead of `M × (ROWS + COLS)`, giving near-100% MAC utilization as M grows.
@@ -95,95 +93,83 @@ data_in──►│  (reg)   │
 acc_in ──►│          ├──► acc_out
           └──────────┘
 ```
+TO FIX:
 
 - Phase 1 (`weight_ld=1, en=0`): latch weight into PE register
 - Phase 2 (`weight_ld=0, en=1`): stream activations, accumulate partial sums
 - `int8 × int8 → int32`, then `int32 + int32 → int32`
 
-### Requantization stage (`requant.sv`)
+TO FIX:
 
-A COLS-wide combinational output stage that converts the int32 accumulator directly to int8, so the next layer can consume it without any float dequantization.
+- `relu_en` — clamp negative `acc_out` values to zero (combinational)
+- `requant_en`, `bias_in[COLS]`, `M0`, `rshift`, `zero_pt` — drive the requantization stage
 
-```
-acc_int32 ──► + bias ──► × M0 (63-bit) ──► >>> rshift ──► + zero_pt ──► sat8 ──► [ReLU] ──► q_int8
-```
+### Usage for matrix multiplication
 
-The combined scale `S = a_scale × w_scale / y_scale` is pre-computed by the EP and encoded as a fixed-point multiplier `M0 = round(S × 2³¹)` with `rshift = 31`. This is the standard fixed-point requantization used by integer-only NPUs (TFLite, ONNX Runtime, Apple Neural Engine, Qualcomm Hexagon).
+([Background on systolic matrix multiplication](https://www.avikde.me/p/systolic-arrays-for-general-robotics))
 
-## Running a Real Model: QuickDraw Sketch Classifier
+**Input staging (M rows, R = HW_ROWS):**
+- **Bias**: Enters from top, staggered by row: b(1,1) at t=1, b(2,1) at t=2, ..., b(m,1) at t=M
+- **Activations**: Enters from left, same stagger: x(1,1) at t=1 (top PE), x(2,1) at t=2, ..., x(m,1) at t=M
 
-`scripts/train_quickdraw.py` downloads a subset of the [Google QuickDraw](https://github.com/googlecreativelab/quickdraw-dataset) dataset (10 sketch categories, 28×28 bitmaps), applies static post-training quantization, and exports a fully-integer ONNX model. `scripts/run_quickdraw.py` runs it end-to-end through the TinyXPU EP.
+**Pipeline timing:**
+- At t > M, the top-left PE finishes the first matrix product
+- At t = M+1, that PE is idle and *could* accept a new weight
 
-### Network and array co-design
+### Design enhancements for weight loading
 
-The network is sized so that **no layer requires tiling**:
+In In [TPU-like](https://arxiv.org/pdf/1704.04760) architectures, weight loading is done in a separate phase and needs the pipeline to fully drain. This adds latency. Quoting the TPU v1 paper,
 
-| Dimension | Value |
-|-----------|-------|
-| Input | 28×28 → 8×8 area-average → **64 features** |
-| FC1 | 64 → 64 + ReLU |
-| FC2 | 64 → 32 + ReLU |
-| FC3 | 32 → 10 (logits) |
-| Array size | **64×64** |
+> The weights are preloaded, and take effect with the advancing wave alongside the first data of a new block
 
-All inner dimensions (K ≤ 64, N ≤ 64) fit in one hardware pass — no tiling, no K-accumulation across passes.
+> About 35% of cycles are spent waiting for weights to load from memory into the matrix unit, which occurs during the 4 fully connected layers that run at an operational intensity of just 32
 
-### Fully-integer pipeline
+The Apple Neural Engine is effectively double-buffered via SRAM banks.
 
-Static PTQ (static post-training quantization) produces a `QLinearMatMul` graph where every scale and zero-point is a baked-in constant. The hardware executes each layer as a single fused operation:
+#### 1. Pipelined tagged weight loading
 
-```
-int8 activations
-      │
-      ▼
- Systolic array (int8×int8 → int32 accumulation)
-      │
-      ▼
- Requant stage: int32 → int8
-   biased  = acc + bias
-   product = biased × M0   (63-bit fixed-point)
-   shifted = product >>> 31
-   q_out   = sat8(shifted + zero_pt)  [+ ReLU if fused]
-      │
-      ▼
- int8 activations  ──► next layer
-```
+**Idea:** Tag weight values so PEs distinguish them from data (bias/partial sums). A tagged weight entering from the top triggers a load-and-forward chain that fills the column while computation tails out.
 
-There is **no float32 between layers**. `acc_out` (int32) and `q_out` (int8) are both driven by the array in the same clock cycle; the EP reads `q_out` directly.
+**PE behavior:**
+- **Tagged input**: Latch as new weight, reset accumulator to 0, pass tagged weight down immediately
+- **Untagged input**: Add to accumulator (first untagged is bias, subsequent are partial sums)
 
-### What the hardware sees vs what the CPU handles
+**Walkthrough (K=3 PEs, M=5 rows):**
 
-| Layer | Operator | Handled by |
-|-------|----------|------------|
-| FC1 (64→64) + ReLU | `QLinearMatMul` | **TinyXPU** (systolic array + requant stage) |
-| FC2 (64→32) + ReLU | `QLinearMatMul` | **TinyXPU** (systolic array + requant stage) |
-| FC3 (32→10) | `QLinearMatMul` | **TinyXPU** (systolic array + requant stage) |
-| Output | `ArgMax` / host readout | CPU EP |
+| Cycle | Action |
+|-------|--------|
+| t=1–5 | First matmul: staggered compute, all PEs active |
+| t=6 | PE0 idle; tagged `w[3]` enters, latches, passes down |
+| t=7 | PE1 idle; `w[2]` enters PE0, `w[3]` reaches PE1; both latch and pass |
+| t=8 | PE2 idle; cascade completes: `w[1]`→PE0, `w[2]`→PE1, `w[3]`→PE2. All weights updated. |
+| t=9 | First untagged bias enters; second matmul begins |
 
-### Training and export
+The loading cascade fills the column in K cycles while the previous computation's tail drains through. If the first matmul starts at t=1, the next starts at **t = M + K + 1** (previous rows + weight cascade + 1).
 
-```sh
-source .venv/bin/activate
-python scripts/train_quickdraw.py          # downloads data, trains, exports
-```
+**Hardware tradeoff:** Extra bit required on each north-south connection for the tag.
 
-This produces:
-- `quickdraw.onnx` — float32 model
-- `quickdraw-int8.onnx` — statically quantized (`QLinearMatMul` nodes with embedded scales)
+#### 2. Double-buffered weights
 
-**Static PTQ workflow:**
-1. Train float32 model (15 epochs, Adam, CrossEntropy)
-2. Fuse `Linear + ReLU` pairs
-3. Insert `QuantStub` / `DeQuantStub`, configure per-tensor int8 qconfig
-4. Calibration pass on training set → collect activation statistics
-5. `convert()` → `QLinearMatMul` nodes with constant `a_scale`, `b_scale`, `y_scale`, `y_zero_point`
+**Idea:** Keep two weight registers per PE (active and shadow). Load the next tile's weights into the shadow buffer during computation, then atomically swap at the tile boundary.
 
-### Running the classifier
+**Control signals:**
+- **Switch**: Propagates diagonally; arrives at each PE as the new tile's bias reaches that column, triggering atomic active/shadow swap
+- **Accept**: Row-ready signal allowing shadow buffer loads to proceed down the column during compute
 
-```sh
-source .venv/bin/activate
-python scripts/run_quickdraw.py
-```
+**Cycle analysis:**
+Both double buffering and tagged loading achieve roughly **M + K** cycles between tile starts:
+- **Tagged weights**: Cascade begins when PE0 finishes at t=M+1; K cycles to fill; next bias at t=M+K+1
+- **Double buffering**: Weights load into shadows during compute (overlapped), but the switch signal still needs K cycles to propagate through the array
+
+With tagged weights, weights must arrive precisely in the window between PEs finishing and the next bias entering. Double buffering decouples the timing a little: weights can arrive anytime during the previous tile (memory bandwidth permitting) and the switch signal coordinates the handoff.
+
+Compare to [Tiny-TPU](https://www.tinytpu.com/): They use the same propagating control pattern (switch + accept) rather than data tagging, achieving continuous inference without the ~35% idle time from separate load phases.
+
+**Hardware tradeoff:**
+- **2× weight registers per PE** (~16 bits vs 8 bits)
+- **Separate weight cascade** (cannot reuse `acc_in`—it's busy with partial sums)
+- **2 control bits** (switch + accept flags)
+- More control complexity, but no tag bit on data paths
 
 ## Interactive MLP Explorer
 
