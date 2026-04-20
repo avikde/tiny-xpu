@@ -144,7 +144,7 @@ The Apple Neural Engine is effectively double-buffered via SRAM banks.
 | t=8 | PE2 idle; cascade completes: `w[1]`→PE0, `w[2]`→PE1, `w[3]`→PE2. All weights updated. |
 | t=9 | First untagged bias enters; second matmul begins |
 
-The loading cascade fills the column in K cycles while the previous computation's tail drains through. If the first matmul starts at t=1, the next starts at **t = M + K + 1** (previous rows + weight cascade + 1).
+The loading cascade fills the column in K cycles while the previous computation's tail drains through. If the first matmul starts at t=1, the next starts at *t = M + K + 1* (previous rows + weight cascade + 1), so the latency is **M + K** cycles.
 
 **Hardware tradeoff:** Extra bit required on each north-south connection for the tag.
 
@@ -152,16 +152,8 @@ The loading cascade fills the column in K cycles while the previous computation'
 
 **Idea:** Keep two weight registers per PE (active and shadow). Load the next tile's weights into the shadow buffer during computation, then atomically swap at the tile boundary.
 
-**Control signals:**
-- **Switch**: Propagates diagonally; arrives at each PE as the new tile's bias reaches that column, triggering atomic active/shadow swap
-- **Accept**: Row-ready signal allowing shadow buffer loads to proceed down the column during compute
-
 **Cycle analysis:**
-Both double buffering and tagged loading achieve roughly **M + K** cycles between tile starts:
-- **Tagged weights**: Cascade begins when PE0 finishes at t=M+1; K cycles to fill; next bias at t=M+K+1
-- **Double buffering**: Weights load into shadows during compute (overlapped), but the switch signal still needs K cycles to propagate through the array
-
-With tagged weights, weights must arrive precisely in the window between PEs finishing and the next bias entering. Double buffering decouples the timing a little: weights can arrive anytime during the previous tile (memory bandwidth permitting) and the switch signal coordinates the handoff.
+- Gap of **max(M, K)** cycles. PE(1,1) starts the new tile immediately after finishing the previous row, while bottom-right PEs finish the old tile using their (still-active) old weights. The switch propagates diagonally, catching each PE just as it becomes idle.
 
 Compare to [Tiny-TPU](https://www.tinytpu.com/): They use the same propagating control pattern (switch + accept) rather than data tagging, achieving continuous inference without the ~35% idle time from separate load phases.
 
