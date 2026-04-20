@@ -146,7 +146,7 @@ function hwMetricsAll() {
 
       // Determine tile dimensions (last tile may be smaller)
       const tileKEffective = Math.min(K, arrayRows);
-      
+
       // Determine effective ROWS for each tile (output taps for TinyXPU)
       let effectiveRows = arrayRows;
       if (isTinyXPU && tinyxpuOutputTaps && tileKEffective < arrayRows) {
@@ -163,19 +163,22 @@ function hwMetricsAll() {
       let cyclesPerTile = 0;
       let weightLoadPerTile = 0;
 
+      // Tile dimensions: M×K input, K×N weights, produces M×N output
+      const tileN = Math.min(N, arrayCols);  // Effective N dimension for this tile
+
       if (isTinyXPU) {
-        // TinyXPU with cascade-style weight loading
+        // TinyXPU: cycle count depends on output drain (effectiveRows with taps)
         if (tinyxpuDoubleBuffer) {
-          // Full overlap: max(M, tileK) + effectiveRows per tile
+          // max(M, K) for MAC overlap + effectiveRows for output drain
           cyclesPerTile = Math.max(M, tileKEffective) + effectiveRows;
         } else {
-          // Partial overlap: M + tileK + 1 + effectiveRows per tile
-          cyclesPerTile = M + tileKEffective + 1 + effectiveRows;
+          // Tagged: M + K (weight load during tail) + effectiveRows for drain
+          cyclesPerTile = M + tileKEffective + effectiveRows;
         }
         weightLoadPerTile = tileKEffective;
       } else {
-        // TPU-like: separate weight loading phase
-        cyclesPerTile = M + effectiveRows + tileKEffective + effectiveRows;
+        // TPU-like: separate weight loading phase (M + R + K + N)
+        cyclesPerTile = M + arrayRows + tileKEffective + tileN;
         weightLoadPerTile = tileKEffective;
       }
 
@@ -287,23 +290,23 @@ function updateHW() {
   tbody.innerHTML = '';
   const { depth, width, arrayRows, arrayCols } = state;
   const shapes = [[1, width], ...Array(depth - 1).fill([width, width]), [width, 1]];
-  
+
   shapes.forEach(([inn, out], i) => {
     const p = inn * out + out;
     const K = inn;
     const N = out;
-    
+
     // Calculate tiling
     const tilesK = Math.ceil(K / arrayRows);
     const tilesN = Math.ceil(N / arrayCols);
     const totalTiles = tilesK * tilesN;
-    
+
     // Build tiling annotation
     let tilingInfo = '';
     if (totalTiles > 1) {
       tilingInfo = ` <span style="color:#9a6700; font-size:0.7em;">(${tilesK}×${tilesN} tiles)</span>`;
     }
-    
+
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>L${i + 1}</td><td>${inn}→${out}${tilingInfo}</td><td>${p.toLocaleString()}</td>`;
     tbody.appendChild(tr);
