@@ -124,7 +124,7 @@ In [TPU-like](https://arxiv.org/pdf/1704.04760) architectures, weight loading is
 
 > About 35% of cycles are spent waiting for weights to load from memory into the matrix unit, which occurs during the 4 fully connected layers that run at an operational intensity of just 32
 
-The time for a `(M,K) × (K,N)` product is `M+R+N` cycles (`R` cycles to fill the pipeline, `M` cycles of compute, `N` cycles to drain). With separate-phase weight loading, you must drain the pipeline and reload: **gap between tiles is `M+K+R+N** cycles.
+The time for a `(M,K) × (K,N)` product is `M+R+N` cycles (`R` cycles to fill the pipeline, `M` cycles of compute, `N` cycles to drain). With separate-phase weight loading, you must drain the pipeline and reload: tile-to-tile **latency is `M+K+R+N** cycles.
 
 #### 1. Pipelined tagged weight loading
 
@@ -134,7 +134,7 @@ The time for a `(M,K) × (K,N)` product is `M+R+N` cycles (`R` cycles to fill th
 - **Tagged input**: Latch as new weight, reset accumulator to 0, pass tagged weight down immediately
 - **Untagged input**: Add to accumulator (first untagged is bias, subsequent are partial sums)
 
-For the matrix product, it takes `M+K` cycles from the first input entry to the start of weight loading for the next product. The next product can start immediately after the first new weight column is loaded over `K` cycles. Therefore, the **gap between tiles is `M+2K` cycles**.
+For the matrix product, it takes `M+K` cycles from the first input entry to the start of weight loading for the next product. The next product can start immediately after the first new weight column is loaded over `K` cycles. Therefore, the tile-to-tile **latency is `M+2K` cycles**.
 
 **Hardware tradeoff:** Extra bit on each north-south connection for the tag.
 
@@ -157,6 +157,28 @@ Other systems:
 - More control complexity, but no tag bit on data paths
 
 ### Design enhancement: output taps
+
+E.g. with a weight-stationary array with 16 rows, let's say the weight matrix W has 8 rows.
+```
+W
+---
+0
+---> normal output after 16 rows
+```
+suffers the latency all 16 rows. But if we had a few extra output taps (let’s say after 8 rows in this example)
+```
+W
+---> new output tap after 8 rows
+0
+---> normal output after 16 rows
+```
+then we could be done after 8 cycles. With a bit more work we could even run two products in parallel (relevant for multi-headed attention) to get back full utilization.
+```
+W1
+---> new output tap after 8 rows
+W2
+---> normal output after 16 rows
+```
 
 ## Interactive MLP Explorer
 
