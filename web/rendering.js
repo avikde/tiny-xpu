@@ -167,13 +167,13 @@ function hwMetricsAll() {
       const tileN = Math.min(N, arrayCols);  // Effective N dimension for this tile
 
       if (isTinyXPU) {
-        // TinyXPU with cascade-style weight loading
+        // TinyXPU: cycle count depends on output drain (effectiveRows with taps)
         if (tinyxpuDoubleBuffer) {
-          // Full overlap: M + K per tile (double-buffered weights)
-          cyclesPerTile = M + tileKEffective;
+          // max(M, K) for MAC overlap + effectiveRows for output drain
+          cyclesPerTile = Math.max(M, tileKEffective) + effectiveRows;
         } else {
-          // Tagged cascade: M + 2K per tile (weight loading during tail)
-          cyclesPerTile = M + 2 * tileKEffective;
+          // Tagged: M + K (weight load during tail) + effectiveRows for drain
+          cyclesPerTile = M + tileKEffective + effectiveRows;
         }
         weightLoadPerTile = tileKEffective;
       } else {
