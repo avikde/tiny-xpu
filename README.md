@@ -109,12 +109,12 @@ TO FIX:
 ([Background on systolic matrix multiplication](https://www.avikde.me/p/systolic-arrays-for-general-robotics))
 
 **Input staging (M rows, R = HW_ROWS):**
-- **Bias**: Enters from top, staggered by row: b(1,1) at t=1, b(2,1) at t=2, ..., b(m,1) at t=M
-- **Activations**: Enters from left, same stagger: x(1,1) at t=1 (top PE), x(2,1) at t=2, ..., x(m,1) at t=M
+- **Bias**: Enters from top, staggered by row: `b(1,1)` at t=1, `b(2,1)` at t=2, ..., `b(m,1)` at t=M
+- **Activations**: Enters from left, same stagger: `x(1,1)` at t=1 (top PE), `x(2,1)` at t=2, ..., `x(m,1)` at t=M
 
 **Pipeline timing:**
-- At t > M, the top-left PE finishes the first matrix product
-- At t = M+1, that PE is idle and *could* accept a new weight
+- At `t > M+K`, the top-left PE finishes the first matrix product
+- At `t = M+K+1`, that PE is idle and *could* accept a new weight
 
 ### Design enhancements for weight loading
 
@@ -124,7 +124,7 @@ In [TPU-like](https://arxiv.org/pdf/1704.04760) architectures, weight loading is
 
 > About 35% of cycles are spent waiting for weights to load from memory into the matrix unit, which occurs during the 4 fully connected layers that run at an operational intensity of just 32
 
-The time for a **(M, K) × (K, N)** product is **M + K + N** cycles (K cycles to fill the pipeline, M cycles of compute, N cycles to drain). With separate-phase weight loading, you must drain the pipeline and reload: gap between tiles is **M + 2K + N** cycles.
+The time for a `(M,K) × (K,N)` product is `M+R+N` cycles (`R` cycles to fill the pipeline, `M` cycles of compute, `N` cycles to drain). With separate-phase weight loading, you must drain the pipeline and reload: **gap between tiles is `M+K+R+N** cycles.
 
 #### 1. Pipelined tagged weight loading
 
@@ -134,17 +134,7 @@ The time for a **(M, K) × (K, N)** product is **M + K + N** cycles (K cycles to
 - **Tagged input**: Latch as new weight, reset accumulator to 0, pass tagged weight down immediately
 - **Untagged input**: Add to accumulator (first untagged is bias, subsequent are partial sums)
 
-**Walkthrough (K=3 PEs, M=5 rows):**
-
-| Cycle | Action |
-|-------|--------|
-| t=1–5 | First matmul: staggered compute, all PEs active |
-| t=6 | PE0 idle; tagged `w[3]` enters, latches, passes down |
-| t=7 | PE1 idle; `w[2]` enters PE0, `w[3]` reaches PE1; both latch and pass |
-| t=8 | PE2 idle; cascade completes: `w[1]`→PE0, `w[2]`→PE1, `w[3]`→PE2. All weights updated. |
-| t=9 | First untagged bias enters; second matmul begins |
-
-The loading cascade fills the column in K cycles while the previous computation's tail drains. If the first matmul starts at t=1, the next starts at *t = M + K + 1*, so the **tile-to-tile latency is M + K cycles**.
+For the matrix product, it takes `M+K` cycles from the first input entry to the start of weight loading for the next product. The next product can start immediately after the first new weight column is loaded over `K` cycles. Therefore, the **gap between tiles is `M+2K` cycles**.
 
 **Hardware tradeoff:** Extra bit on each north-south connection for the tag.
 
@@ -154,7 +144,7 @@ The loading cascade fills the column in K cycles while the previous computation'
 
 The switch propagates diagonally, catching each PE just as it becomes idle. PE(1,1) starts the new tile immediately after finishing its previous row, while bottom-right PEs finish the old tile using their (still-active) old weights.
 
-The MACs should be able to start right after each other, leading to a latency of **max(M, K)** cycles.
+The MACs should be able to start right after each other, leading to a **latency of `M+K`** cycles.
 
 Other systems:
 - [Tiny-TPU](https://www.tinytpu.com/) uses the same propagating control pattern (switch + accept) rather than data tagging, achieving continuous inference without the ~35% idle time from separate load phases.
