@@ -53,8 +53,7 @@ async def test_weight_load(dut):
     dut.data_in[0].value = 3
     dut.acc_in_top.value = 0
     # Has to propagate down the column + 1 cycle due to how cocotb works
-    for _ in range(ROWS + 1):
-        await RisingEdge(dut.clk)
+    await ClockCycles(dut.clk, ROWS + 1)
 
     assert dut.acc_out_bottom.value.to_signed() == 15, (
         f"Expected acc_out_bottom=15, got {dut.acc_out_bottom.value.to_signed()}"
@@ -80,8 +79,7 @@ async def test_mac_accumulate(dut):
     dut.acc_in_top.value = 10
 
     # Has to propagate down the column + 1 cycle due to how cocotb works
-    for _ in range(ROWS + 1):
-        await RisingEdge(dut.clk)
+    await ClockCycles(dut.clk, ROWS + 1)
 
     assert dut.acc_out_bottom.value.to_signed() == 38, (
         f"Expected acc_out_bottom=38, got {dut.acc_out_bottom.value.to_signed()}"
@@ -137,8 +135,7 @@ async def test_weight_load_sequence(dut):
     dut.data_in[1].value = 1
 
     # Wait ROWS-1 cycles to accumulate, +1 for cocotb
-    for _ in range(ROWS):
-        await RisingEdge(dut.clk)
+    await ClockCycles(dut.clk, ROWS)
 
     assert dut.acc_out_bottom.value.to_signed() == 60, (
         f"Expected acc_out_bottom=60, got {dut.acc_out_bottom.value.to_signed()}"
