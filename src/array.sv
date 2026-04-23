@@ -46,44 +46,40 @@ module array #(
     output logic signed [ACC_WIDTH-1:0]  acc_out_bottom [COLS]
 );
 
-    // Inter-column data wires: data_wire[c][r] connects column c-1 output
-    // to column c input.  data_wire[0] is the left input; data_wire[COLS]
-    // is the right output.
+    // Inter-column data wires: element-wise so that Icarus Verilog can handle
+    // the connections (it does not support array slices in port maps).
     logic signed [DATA_WIDTH-1:0] data_wire [COLS+1][ROWS];
 
-    // ----------------------------------------------------------------
-    // Left/right boundaries
-    // ----------------------------------------------------------------
-
     genvar r;
-    generate
-        for (r = 0; r < ROWS; r++) begin : gen_data_boundary
-            assign data_wire[0][r]     = data_in_left[r];
-            assign data_out_right[r]   = data_wire[COLS][r];
-        end
-    endgenerate
+    for (r = 0; r < ROWS; r++) begin : gen_data_boundary
+        assign data_wire[0][r]     = data_in_left[r];
+        assign data_out_right[r]   = data_wire[COLS][r];
+    end
 
-    // ----------------------------------------------------------------
-    // PE columns
-    // ----------------------------------------------------------------
+    genvar c, r_conn;
+    for (c = 0; c < COLS; c++) begin : gen_col
+        // Local whole arrays for this column's data ports (not slices).
+        logic signed [DATA_WIDTH-1:0] col_data_in  [ROWS];
+        logic signed [DATA_WIDTH-1:0] col_data_out [ROWS];
 
-    genvar c;
-    generate
-        for (c = 0; c < COLS; c++) begin : gen_col
-            pe_col #(
-                .ROWS       (ROWS),
-                .DATA_WIDTH (DATA_WIDTH),
-                .ACC_WIDTH  (ACC_WIDTH)
-            ) u_pe_col (
-                .clk            (clk),
-                .rst_n          (rst_n),
-                .weight_ld      (weight_ld[c]),
-                .data_in        (data_wire[c]),
-                .data_out       (data_wire[c+1]),
-                .acc_in_top     (acc_in_top[c]),
-                .acc_out_bottom (acc_out_bottom[c])
-            );
+        for (r_conn = 0; r_conn < ROWS; r_conn++) begin : gen_conn
+            assign col_data_in[r_conn]    = data_wire[c][r_conn];
+            assign data_wire[c+1][r_conn] = col_data_out[r_conn];
         end
-    endgenerate
+
+        pe_col #(
+            .ROWS       (ROWS),
+            .DATA_WIDTH (DATA_WIDTH),
+            .ACC_WIDTH  (ACC_WIDTH)
+        ) u_pe_col (
+            .clk            (clk),
+            .rst_n          (rst_n),
+            .weight_ld      (weight_ld[c]),
+            .data_in        (col_data_in),
+            .data_out       (col_data_out),
+            .acc_in_top     (acc_in_top[c]),
+            .acc_out_bottom (acc_out_bottom[c])
+        );
+    end
 
 endmodule

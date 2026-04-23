@@ -26,7 +26,7 @@ async def reset_dut(dut):
     await RisingEdge(dut.clk)
 
 
-async def load_weights(dut, B):
+async def load_weights(dut, W):
     """Load weights via systolic cascade from top edge over ROWS cycles.
     This does not do any pipelining with the MACs since it is a test.
 
@@ -36,18 +36,19 @@ async def load_weights(dut, B):
     """
     for c in range(COLS):
         dut.weight_ld[c].value = 1
-    for load_row in range(B.shape[1]):
+    for load_row in range(W.shape[1]):
         for c in range(COLS):
-            dut.acc_in_top[c].value = int(B[load_row - 1][c]) # reversed
+            dut.acc_in_top[c].value = int(W[load_row - 1][c]) # reversed
         await RisingEdge(dut.clk)
     for c in range(COLS):
         dut.weight_ld[c].value = 0
-
+    # Can accept new inputs before the next clock cycle
 
 async def stream_and_collect(dut, A):
     """Stream M rows of activations and collect M rows of outputs.
+    Assumes weights are already loaded.
 
-    External pre-staggering: the caller drives already-staggered inputs.
+    Does inupt staggering
     At cycle t (1-indexed), data_in[r] carries A[t-r][r] if t >= r+1
     and t-r < M, else 0.  This places row r's first element r cycles
     after row 0's first element, matching the PE pipeline depth.
@@ -56,22 +57,21 @@ async def stream_and_collect(dut, A):
     i + ROWS + j (1-indexed).  cocotb reads values after the NBA commit, so
     one additional edge is needed → readable after edge i + ROWS + j + 1.
 
-    The loop runs for M + ROWS + COLS - 1 edges total, driving inputs for
+    The loop runs for M + ROWS + COLS edges total, driving inputs for
     the first M edges and collecting each (row, col) pair as it becomes valid.
     """
     M = len(A)
     results = [[0] * COLS for _ in range(M)]
 
-    # t is 1-indexed edge count; total edges covers the last output (row M-1, col COLS-1)
-    total_edges = M + ROWS + COLS - 1
-    for t in range(1, total_edges + 1):
-        # Drive externally pre-staggered inputs: row r's element at (t-r) enters at cycle t
+    cycles_needed = M + ROWS + COLS
+    for t in range(1, cycles_needed):
+        # Rows enter as /x2/x1/ -> staggered
         for r in range(ROWS):
             src_row = t - r - 1  # A index for this row at this cycle
             if 0 <= src_row < M:
-                dut.data_in[r].value = int(A[src_row][r])
+                dut.data_in_left[r].value = int(A[src_row][r])
             else:
-                dut.data_in[r].value = 0
+                dut.data_in_left[r].value = 0
 
         await RisingEdge(dut.clk)
 
@@ -79,7 +79,7 @@ async def stream_and_collect(dut, A):
         for j in range(COLS):
             out_row = t - ROWS - j - 1
             if 0 <= out_row < M:
-                results[out_row][j] = dut.acc_out[j].value.to_signed()
+                results[out_row][j] = dut.acc_out_bottom[j].value.to_signed()
 
     return results
 
@@ -98,11 +98,11 @@ async def test_reset(dut):
     await reset_dut(dut)
 
     for r in range(ROWS):
-        assert dut.data_out[r].value.to_signed() == 0, (
+        assert dut.data_out_right[r].value.to_signed() == 0, (
             f"data_out[{r}] not zero after reset"
         )
     for c in range(COLS):
-        assert dut.acc_out[c].value.to_signed() == 0, (
+        assert dut.acc_out_bottom[c].value.to_signed() == 0, (
             f"acc_out[{c}] not zero after reset"
         )
 
