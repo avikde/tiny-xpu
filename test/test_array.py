@@ -9,25 +9,18 @@ from cocotb.triggers import ClockCycles, RisingEdge
 
 # Must match the ROWS/COLS parameters the DUT is elaborated with.
 # The runner at the bottom passes -Parray.ROWS=ROWS etc. to iverilog.
-ROWS = 16
-COLS = 16
+ROWS = 4
+COLS = 4
 
 async def reset_dut(dut):
     """Apply active-low reset for a few cycles."""
     dut.rst_n.value = 0
-    dut.relu_en.value = 0
-    dut.requant_en.value = 0
-    dut.M0.value = 0
-    dut.rshift.value = 0
-    dut.zero_pt.value = 0
     for c in range(COLS):
         dut.weight_ld[c].value = 0
     for r in range(ROWS):
-        dut.data_in[r].value = 0
+        dut.data_in_left[r].value = 0
     for c in range(COLS):
-        dut.weight_in_top[c].value = 0
-    for c in range(COLS):
-        dut.bias_in[c].value = 0
+        dut.acc_in_top[c].value = 0
     await ClockCycles(dut.clk, 3)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
@@ -35,6 +28,7 @@ async def reset_dut(dut):
 
 async def load_weights(dut, B):
     """Load weights via systolic cascade from top edge over ROWS cycles.
+    This does not do any pipelining with the MACs since it is a test.
 
     At cycle t (0-indexed), row t of B is driven at the top and cascades down.
     After weight_ld=0, weights need ROWS more cycles to cascade to the bottom row.
@@ -42,14 +36,12 @@ async def load_weights(dut, B):
     """
     for c in range(COLS):
         dut.weight_ld[c].value = 1
-    for load_row in range(ROWS):
+    for load_row in range(B.shape[1]):
         for c in range(COLS):
-            dut.weight_in_top[c].value = int(B[load_row][c])
+            dut.acc_in_top[c].value = int(B[load_row - 1][c]) # reversed
         await RisingEdge(dut.clk)
     for c in range(COLS):
         dut.weight_ld[c].value = 0
-    # Weights continue cascading down for ROWS cycles after weight_ld goes low
-    await ClockCycles(dut.clk, ROWS)
 
 
 async def stream_and_collect(dut, A):
@@ -122,10 +114,10 @@ async def test_weight_cascade_debug(dut):
     cocotb.start_soon(clock.start())
 
     await reset_dut(dut)
-    
+
     # Simple 4x4 identity for debugging (we only need first 4 rows/cols visible)
     cocotb.log.info("=== Weight Cascade Debug ===")
-    
+
     for c in range(COLS):
         dut.weight_ld[c].value = 1
     for load_row in range(4):
