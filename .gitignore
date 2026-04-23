@@ -2,6 +2,7 @@ SYNTAX: GLOB
 
 build/**
 **/sim_build
+**/sim_build_col
 **/sim_build_array
 __pycache__
 scripts/*.onnx
