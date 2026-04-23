@@ -38,11 +38,12 @@ async def load_weights(dut, W):
         dut.weight_ld[c].value = 1
     for load_row in range(W.shape[1]):
         for c in range(COLS):
-            dut.acc_in_top[c].value = int(W[load_row - 1][c]) # reversed
+            dut.acc_in_top[c].value = int(W[ROWS - load_row - 1][c]) # reversed
         await RisingEdge(dut.clk)
     for c in range(COLS):
         dut.weight_ld[c].value = 0
     # Can accept new inputs before the next clock cycle
+
 
 async def stream_and_collect(dut, A):
     """Stream M rows of activations and collect M rows of outputs.
@@ -115,38 +116,22 @@ async def test_weight_cascade_debug(dut):
 
     await reset_dut(dut)
 
-    # Simple 4x4 identity for debugging (we only need first 4 rows/cols visible)
-    cocotb.log.info("=== Weight Cascade Debug ===")
+    W = np.random.randint(1, 6, size=(ROWS, COLS), dtype=np.int8)
+    print("W = ", W)
+    await load_weights(dut, W)
 
+    # Set weight_ld = 1 and clock to see if we get the weights back
     for c in range(COLS):
         dut.weight_ld[c].value = 1
-    for load_row in range(4):
+
+    # Read acc_out_bottom to verify weight cascade
+    W2 = np.empty_like(W)
+    for r in range(ROWS):
+        await RisingEdge(dut.clk)
         for c in range(COLS):
-            val = 1 if load_row == c else 0  # Identity pattern
-            dut.weight_in_top[c].value = val
-        cocotb.log.info(f"Cycle {load_row}: Driving weight row {load_row} at top")
-        await RisingEdge(dut.clk)
-        # Check acc_wire[0] after the edge
-        acc0 = dut.acc_out[0].value.to_signed() if hasattr(dut.acc_out[0], 'value') else 0
-        cocotb.log.info(f"  After edge: acc_out[0] = {acc0}")
-
-    for c in range(COLS):
-        dut.weight_ld[c].value = 0
-    cocotb.log.info("weight_ld = 0, cascading remaining rows...")
-    for i in range(ROWS):
-        await RisingEdge(dut.clk)
-        acc0 = dut.acc_out[0].value.to_signed() if hasattr(dut.acc_out[0], 'value') else 0
-        cocotb.log.info(f"  Settle cycle {i}: acc_out[0] = {acc0}")
-
-    # Now stream a simple input and check output
-    cocotb.log.info("=== Streaming Input [1,0,0,0,...] ===")
-    dut.data_in[0].value = 1
-    for i in range(COLS + ROWS + 5):
-        await RisingEdge(dut.clk)
-        acc_vals = [dut.acc_out[c].value.to_signed() for c in range(min(4, COLS))]
-        cocotb.log.info(f"  Cycle {i}: acc_out[0:3] = {acc_vals}")
-
-    cocotb.log.info("=== Debug Complete ===")
+            W2[ROWS - 1 - r, c] = dut.acc_out_bottom[c].value.to_signed()
+    print("W2 = ", W2)
+    assert np.array_equal(W2, W), f"acc_out_bottom=\n{W2}\n!=\nW=\n{W}"
 
 
 @cocotb.test()
@@ -157,8 +142,8 @@ async def test_matmul_identity(dut):
 
     await reset_dut(dut)
 
-    I = [[1 if r == c else 0 for c in range(COLS)] for r in range(ROWS)]
-    await load_weights(dut, I)
+    W = np.eye(ROWS, dtype=np.int8)
+    await load_weights(dut, W)
 
     rng = np.random.default_rng(42)
 
