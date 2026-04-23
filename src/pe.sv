@@ -12,7 +12,9 @@ module pe #(
     input  logic                    en,
     input  logic                    weight_ld,
 
+    // From the left
     input  logic signed [DATA_WIDTH-1:0] data_in,
+    // To the right
     output logic signed [DATA_WIDTH-1:0] data_out,
 
     // Partial sum cascade (DUAL-USE: also carries weights during weight_ld=1)
@@ -26,7 +28,7 @@ module pe #(
     // weight_r is signed [7:0], an 8-bit signed value (range -128 to +127, i.e. int8)
     logic signed [DATA_WIDTH-1:0] weight_r;
     logic weight_valid;  // Set when weight loaded, cleared when weight_ld goes low
-    // data_in is signed [7:0] 
+    // data_in is signed [7:0]
     logic signed [ACC_WIDTH-1:0]  mult_result;
     // The result is assigned to mult_result which is signed [31:0]
     assign mult_result = weight_r * data_in;
