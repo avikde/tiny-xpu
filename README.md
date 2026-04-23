@@ -126,16 +126,18 @@ The time for a `(M,K) × (K,N)` product is `M+R+N` cycles (`R` cycles to fill th
 
 #### 1. Pipelined sequential weight loading
 
-**Idea:** Add a `weight_in` signal, so that PEs distinguish the weight from data (bias/partial sums). When `weight_in=1`, a weight entering from the top on acc_in triggers a load-and-forward chain that fills the column while computation tails out.
+**Idea:** Add a per-column `weight_ld` global signal, so that PEs distinguish the weight from data (bias/partial sums). When `weight_ld=1`, a weight entering from the top on `acc_in` triggers a load-and-forward chain that fills the column while computation tails out.
 
 **PE behavior:**
-- `weight_in=1`: Latch as new weight, reset accumulator to 0, pass tagged weight down immediately
-- `weight_in=0`: Add to accumulator (first untagged is bias, subsequent are partial sums)
-- `weight_out` is set to `weight_in` so that it is received by the south PE in the next cycle.
+- `weight_ld=1`: Latch `acc_in` as new weight, reset accumulator to 0, set `acc_out` to the weight
+- `weight_ld=0`: Add to accumulator (first untagged is bias, subsequent are partial sums)
+
+**Example:** We have PE0 (top) connected to PE1 (bottom), and we set `weight_ld=1`, feed in from the top `{w1, w0}` over 2 cycles and then reset `weight_ld`. In cycle:
+1. PE0 sets its weight to `w1`, and sets its acc_out (= PE1's acc_in) = `w1`
+2. PE1 sets its weight to `w1`. PE0 sets its weight to `w0`
+3. Since `weight_ld=0`, the weights are now frozen in the PEs and MAC can begin
 
 For the matrix product, it takes `M+K` cycles from the first input entry to the start of weight loading for the next product. The next product can start immediately after the first new weight column is loaded over `K` cycles. Therefore, the tile-to-tile **latency is `M+2K` cycles**.
-
-**Hardware tradeoff:** Extra bit on each north-south connection for the tag.
 
 #### 2. Double-buffered weights
 
