@@ -156,7 +156,7 @@ async def test_dot_product(dut):
     rng = np.random.default_rng(42)
     weights = rng.integers(1, 6, size=ROWS, dtype=np.int8)
     data = rng.integers(1, 6, size=ROWS, dtype=np.int8)
-    bias = [0]#rng.integers(1, 6, size=1, dtype=np.int8)
+    bias = rng.integers(1, 6, size=1, dtype=np.int8)
     expected = int(np.dot(weights.astype(np.int32), data.astype(np.int32)) + bias[0])
 
     # Load weights: feed reversed so PE[r] ends up with weights[r]
@@ -167,7 +167,7 @@ async def test_dot_product(dut):
     dut.weight_ld.value = 0
 
     # Bias from top
-    dut.acc_in_top.value = bias[0]
+    dut.acc_in_top.value = int(bias[0])
     # Stagger data in from the left
     for r in range(ROWS):
         dut.data_in[r].value = int(data[r])
