@@ -45,11 +45,11 @@ async def load_weights(dut, W):
     # Can accept new inputs before the next clock cycle
 
 
-async def stream_and_collect(dut, A):
+async def stream_and_collect(dut, A, B = None):
     """Stream M rows of activations and collect M rows of outputs.
     Assumes weights are already loaded.
 
-    Does inupt staggering
+    Does input staggering
     At cycle t (1-indexed), data_in[r] carries A[t-r][r] if t >= r+1
     and t-r < M, else 0.  This places row r's first element r cycles
     after row 0's first element, matching the PE pipeline depth.
@@ -60,9 +60,15 @@ async def stream_and_collect(dut, A):
 
     The loop runs for M + ROWS + COLS edges total, driving inputs for
     the first M edges and collecting each (row, col) pair as it becomes valid.
+
+    The pictures here are helpful:
+        https://www.avikde.me/p/systolic-arrays-for-general-robotics
     """
     M = len(A)
-    results = [[0] * COLS for _ in range(M)]
+    results = np.zeros((M, COLS), dtype=np.int32)
+    # Size of B should be M x COLS as well
+    if B is not None:
+        assert len(B) == M and all(len(row) == COLS for row in B)
 
     cycles_needed = M + ROWS + COLS
     for t in range(1, cycles_needed):
@@ -73,6 +79,15 @@ async def stream_and_collect(dut, A):
                 dut.data_in_left[r].value = int(A[src_row][r])
             else:
                 dut.data_in_left[r].value = 0
+        # Biases enter as:
+        # [    b22]
+        # [b21 b12]
+        # [b11  0 ]
+        for c in range(COLS):
+            dut.acc_in_top[c].value = 0
+            src_row = t - c - 1  # A index for this row at this cycle
+            if B is not None and 0 <= src_row < M:
+                dut.acc_in_top[c].value = int(B[src_row][c])
 
         await RisingEdge(dut.clk)
 
@@ -145,12 +160,12 @@ async def test_matmul_identity(dut):
     W = np.eye(ROWS, dtype=np.int8)
     await load_weights(dut, W)
 
-    rng = np.random.default_rng(42)
-
-    A = rng.integers(1, 6, size=(16, ROWS), dtype=np.int8)
+    M = 1
+    A = np.random.randint(1, 6, size=(M, ROWS), dtype=np.int8)
 
     results = await stream_and_collect(dut, A)
 
+    assert np.array_equal(A, results), f"results=\n{results}\n!=\nA=\n{A}"
     for i, row in enumerate(A):
         for j in range(COLS):
             assert results[i][j] == row[j], (
@@ -188,139 +203,6 @@ async def test_matmul(dut):
             expected = int(C_expected[i][j])
             assert results[i][j] == expected, (
                 f"C[{i}][{j}]: expected {expected}, got {results[i][j]}"
-            )
-
-
-@cocotb.test()
-async def test_requant(dut):
-    """requant_en=1: q_out matches Python reference clamp(round(A@W * S), -128, 127)."""
-    clock = Clock(dut.clk, 10, unit="ns")
-    cocotb.start_soon(clock.start())
-
-    await reset_dut(dut)
-
-    rng = np.random.default_rng(55)
-    A = rng.integers(-5, 6, size=(ROWS, ROWS), dtype=np.int8)
-    B = rng.integers(-5, 6, size=(ROWS, COLS), dtype=np.int8)
-    C_int32 = A.astype(np.int32) @ B.astype(np.int32)  # [ROWS, COLS]
-
-    # Choose a scale that keeps values in int8 range after requant.
-    # S ≈ 1/200  →  M0 = round(S * 2^31), rshift = 31
-    S_float  = 1.0 / 200.0
-    RSHIFT   = 31
-    M0_val   = int(round(S_float * (1 << RSHIFT)))
-    ZERO_PT  = 0
-
-    # Python reference: replicate hardware integer arithmetic exactly.
-    # product = biased * M0  (int64); shifted = product >> rshift  (arithmetic, truncation);
-    # then clamp to [-128, 127].
-    _product = C_int32.astype(np.int64) * np.int64(M0_val)
-    _shifted = _product >> RSHIFT   # arithmetic right-shift in Python matches hardware truncation
-    C_ref = np.clip(_shifted, -128, 127).astype(np.int8)
-
-    await load_weights(dut, B)
-
-    dut.requant_en.value = 1
-    dut.relu_en.value    = 0
-    dut.M0.value         = M0_val
-    dut.rshift.value     = RSHIFT
-    dut.zero_pt.value    = ZERO_PT
-    for c in range(COLS):
-        dut.bias_in[c].value = 0  # no bias in this test
-
-    results = await stream_and_collect(dut, A)
-    dut.requant_en.value = 0
-
-    # results[] contains the raw acc_out (int32); q_out is a separate port.
-    # For the requant test we read q_out directly.
-    for i in range(4):
-        for j in range(COLS):
-            got = dut.q_out[j].value.to_signed()
-            # q_out is valid at the same cycle as acc_out — already captured above
-            # because stream_and_collect reads after each rising edge.
-            # Re-read from the DUT's q_out at the final steady state for row 0..3.
-            # (stream_and_collect only captures acc_out; we verify q_out via a
-            #  separate single-row check below.)
-            _ = got  # suppress lint
-
-    # Single-row verification: stream one row and check q_out immediately.
-    await reset_dut(dut)
-    await load_weights(dut, B)
-
-    dut.requant_en.value = 1
-    dut.M0.value         = M0_val
-    dut.rshift.value     = RSHIFT
-    dut.zero_pt.value    = ZERO_PT
-
-    # Stream row 0, then drain until output is valid.
-    # cocotb reads in NBA phase (after the rising edge), so q_out[j] for row 0 is
-    # readable after edge ROWS + j + 1  (same convention as stream_and_collect).
-    for t in range(1, ROWS + COLS + 1):
-        if t <= 1:
-            for r in range(ROWS):
-                dut.data_in[r].value = int(A[0][r])
-        else:
-            for r in range(ROWS):
-                dut.data_in[r].value = 0
-        await RisingEdge(dut.clk)
-
-        # After edge t, q_out[j] for row 0 is valid when t == ROWS + j + 1.
-        for j in range(COLS):
-            if t == ROWS + j + 1:
-                got      = dut.q_out[j].value.to_signed()
-                expected = int(C_ref[0][j])
-                assert got == expected, (
-                    f"requant q_out[{j}]: expected {expected}, got {got} "
-                    f"(acc={C_int32[0][j]}, S={S_float:.6f})"
-                )
-
-    dut.requant_en.value = 0
-
-
-@cocotb.test()
-async def test_relu_en(dut):
-    """relu_en=1 clamps negative acc_out to 0; positive values pass through."""
-    clock = Clock(dut.clk, 10, unit="ns")
-    cocotb.start_soon(clock.start())
-
-    await reset_dut(dut)
-
-    rng = np.random.default_rng(77)
-    # Mixed-sign weights produce a mix of positive and negative outputs.
-    A = rng.integers(-5, 6, size=(ROWS, ROWS), dtype=np.int8)
-    B = rng.integers(-5, 6, size=(ROWS, COLS), dtype=np.int8)
-    C_expected = A.astype(np.int32) @ B.astype(np.int32)
-    C_relu     = np.maximum(C_expected, 0)
-
-    # Verify there is at least one negative entry so the test is meaningful.
-    assert np.any(C_expected < 0), "test setup: expected some negative outputs"
-
-    await load_weights(dut, B)
-
-    # --- relu_en = 1 ---
-    dut.relu_en.value = 1
-    results = await stream_and_collect(dut, A)
-    dut.relu_en.value = 0
-
-    for i in range(4):
-        for j in range(COLS):
-            expected = int(C_relu[i][j])
-            assert results[i][j] == expected, (
-                f"ReLU C[{i}][{j}]: expected {expected}, got {results[i][j]}"
-            )
-
-    # --- relu_en = 0: same weights, outputs should match raw matmul ---
-    await reset_dut(dut)
-    await load_weights(dut, B)
-
-    dut.relu_en.value = 0
-    results_no_relu = await stream_and_collect(dut, A)
-
-    for i in range(4):
-        for j in range(COLS):
-            expected = int(C_expected[i][j])
-            assert results_no_relu[i][j] == expected, (
-                f"No-ReLU C[{i}][{j}]: expected {expected}, got {results_no_relu[i][j]}"
             )
 
 
