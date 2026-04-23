@@ -124,7 +124,7 @@ In [TPU-like](https://arxiv.org/pdf/1704.04760) architectures, weight loading is
 
 > About 35% of cycles are spent waiting for weights to load from memory into the matrix unit, which occurs during the 4 fully connected layers that run at an operational intensity of just 32
 
-The time for a `(M,K) × (K,N)` product is `M+R+N` cycles (`R` cycles to fill the pipeline, `M` cycles of compute, `N` cycles to drain). With separate-phase weight loading, you must drain the pipeline and reload: tile-to-tile **latency is `M+K+R+N** cycles.
+The time for a `(M,K) × (K,N)` product is `M+R+N` cycles (`R` cycles to fill the pipeline, `M` cycles of compute, `N` cycles to drain). With separate-phase weight loading, you must drain the pipeline and reload: tile-to-tile **latency is `M+K+R+N`** cycles.
 
 #### 1. Pipelined tagged weight loading
 
