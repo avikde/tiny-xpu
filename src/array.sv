@@ -34,7 +34,6 @@ module array #(
 ) (
     input  logic clk,
     input  logic rst_n,
-    input  logic en,
     input  logic relu_en,   // when 1, clamp acc_out negatives to 0 (hardware ReLU)
 
     // Activation inputs — one per row, stream east through the array.
@@ -44,10 +43,10 @@ module array #(
     // Activation outputs — rightmost column passthrough (useful for chaining)
     output logic signed [DATA_WIDTH-1:0] data_out [ROWS],
 
-    // Weight loading — systolic cascade from top edge.
-    // When weight_in=1: weight_in_top[c] enters row 0, cascades down over ROWS cycles.
-    // When weight_in=0: acc_wire[0] is '0 (normal accumulation).
-    input  logic                         weight_in,
+    // Weight loading — global signal, broadcast to all PEs.
+    // When weight_ld=1: weight_in_top[c] enters row 0 and cascades down.
+    // When weight_ld=0: acc_wire[0] is '0 (normal accumulation).
+    input  logic                         weight_ld,
     input  logic signed [DATA_WIDTH-1:0] weight_in_top [COLS],
 
     // Accumulated results from the bottom row, one per column.
@@ -74,10 +73,6 @@ module array #(
     // Row 0 = zero (top boundary), row ROWS = raw PE output (before de-skew)
     logic signed [ACC_WIDTH-1:0] acc_wire [ROWS+1][COLS];
 
-    // Vertical weight tag wires: weight_wire[r][c] feeds PE(r,c).weight_in
-    // Row 0 = top-level weight_in, row ROWS+1 = unused (bottom boundary)
-    logic weight_wire [ROWS+1][COLS];
-
     // ----------------------------------------------------------------
     // Boundary: data_out and top acc boundary
     // ----------------------------------------------------------------
@@ -88,11 +83,10 @@ module array #(
             assign data_out[r_b] = data_wire[r_b][COLS];
         end
         for (c_b = 0; c_b < COLS; c_b++) begin : gen_acc_top
-            assign acc_wire[0][c_b] = weight_in
+            assign acc_wire[0][c_b] = weight_ld
                 ? {{(ACC_WIDTH-DATA_WIDTH){weight_in_top[c_b][DATA_WIDTH-1]}},
                    weight_in_top[c_b]}
                 : '0;
-            assign weight_wire[0][c_b] = weight_in;
         end
     endgenerate
 
@@ -122,13 +116,11 @@ module array #(
                 ) u_pe (
                     .clk       (clk),
                     .rst_n     (rst_n),
-                    .en        (en),
-                    .weight_in (weight_wire[r][c]),
+                    .weight_ld (weight_ld),
                     .data_in   (data_wire[r][c]),
                     .data_out  (data_wire[r][c+1]),
                     .acc_in    (acc_wire[r][c]),
-                    .acc_out   (acc_wire[r+1][c]),
-                    .weight_out(weight_wire[r+1][c])
+                    .acc_out   (acc_wire[r+1][c])
                 );
             end
         end

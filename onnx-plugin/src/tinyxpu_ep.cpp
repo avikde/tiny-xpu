@@ -849,7 +849,7 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
             arr.clk = 0; arr.eval();
         };
 
-        arr.clk = 0; arr.rst_n = 0; arr.en = 0; arr.weight_in = 0;
+        arr.clk = 0; arr.rst_n = 0; arr.weight_ld = 0;
         arr.relu_en    = (apply_relu || apply_requant) ? 1 : 0;
         arr.requant_en = apply_requant ? 1 : 0;
         arr.M0         = apply_requant ? info->requant_M0     : 0;
@@ -867,7 +867,7 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         arr.rst_n = 1;
         tick();
 
-        arr.weight_in = 1;
+        arr.weight_ld = 1;
         for (int load_row = 0; load_row < HW_ROWS; ++load_row) {
             for (int c = 0; c < HW_COLS; ++c) {
                 int8_t w = (load_row < K_sl && c < N_sl) ? B_sl[load_row * N_sl + c] : 0;
@@ -876,11 +876,10 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
             }
             tick(); obs.ticks_weight_load++;
         }
-        arr.weight_in = 0;
+        arr.weight_ld = 0;
         tick(); obs.ticks_weight_load++;
 
         const int64_t total_ticks = total_M + HW_ROWS + N_sl - 2;
-        arr.en = 1;
         for (int64_t t = 0; t < total_ticks; ++t) {
             // External pre-staggering: row r's element at (t-r) enters at cycle t.
             // Row 0 enters at t=0, row 1 at t=1, etc.

@@ -24,7 +24,7 @@ struct SimObservations {
     int64_t ticks_total;
     int64_t ticks_reset;        // ticks while rst_n == 0
     int64_t ticks_weight_load;  // ticks while weight_in == 1  (latch + settle)
-    int64_t ticks_streaming;    // ticks while en == 1
+    int64_t ticks_streaming;    // ticks during activation streaming
 
     // Element-level data movement (one increment per element written/read)
     int64_t weight_writes;      // host → weight_in[]  (int8 elements)

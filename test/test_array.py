@@ -15,13 +15,12 @@ COLS = 16
 async def reset_dut(dut):
     """Apply active-low reset for a few cycles."""
     dut.rst_n.value = 0
-    dut.en.value = 0
     dut.relu_en.value = 0
     dut.requant_en.value = 0
     dut.M0.value = 0
     dut.rshift.value = 0
     dut.zero_pt.value = 0
-    dut.weight_in.value = 0
+    dut.weight_ld.value = 0
     for r in range(ROWS):
         dut.data_in[r].value = 0
     for c in range(COLS):
@@ -37,16 +36,16 @@ async def load_weights(dut, B):
     """Load weights via systolic cascade from top edge over ROWS cycles.
 
     At cycle t (0-indexed), row t of B is driven at the top and cascades down.
-    After weight_in=0, weights need ROWS more cycles to cascade to the bottom row.
+    After weight_ld=0, weights need ROWS more cycles to cascade to the bottom row.
     Returns when all PEs have their weights.
     """
-    dut.weight_in.value = 1
+    dut.weight_ld.value = 1
     for load_row in range(ROWS):
         for c in range(COLS):
             dut.weight_in_top[c].value = int(B[load_row][c])
         await RisingEdge(dut.clk)
-    dut.weight_in.value = 0
-    # Weights continue cascading down for ROWS cycles after weight_in goes low
+    dut.weight_ld.value = 0
+    # Weights continue cascading down for ROWS cycles after weight_ld goes low
     await ClockCycles(dut.clk, ROWS)
 
 
@@ -124,7 +123,7 @@ async def test_weight_cascade_debug(dut):
     # Simple 4x4 identity for debugging (we only need first 4 rows/cols visible)
     cocotb.log.info("=== Weight Cascade Debug ===")
     
-    dut.weight_in.value = 1
+    dut.weight_ld.value = 1
     for load_row in range(4):
         for c in range(COLS):
             val = 1 if load_row == c else 0  # Identity pattern
@@ -134,24 +133,22 @@ async def test_weight_cascade_debug(dut):
         # Check acc_wire[0] after the edge
         acc0 = dut.acc_out[0].value.to_signed() if hasattr(dut.acc_out[0], 'value') else 0
         cocotb.log.info(f"  After edge: acc_out[0] = {acc0}")
-    
-    dut.weight_in.value = 0
-    cocotb.log.info("weight_in = 0, cascading remaining rows...")
+
+    dut.weight_ld.value = 0
+    cocotb.log.info("weight_ld = 0, cascading remaining rows...")
     for i in range(ROWS):
         await RisingEdge(dut.clk)
         acc0 = dut.acc_out[0].value.to_signed() if hasattr(dut.acc_out[0], 'value') else 0
         cocotb.log.info(f"  Settle cycle {i}: acc_out[0] = {acc0}")
-    
+
     # Now stream a simple input and check output
     cocotb.log.info("=== Streaming Input [1,0,0,0,...] ===")
-    dut.en.value = 1
     dut.data_in[0].value = 1
     for i in range(COLS + ROWS + 5):
         await RisingEdge(dut.clk)
         acc_vals = [dut.acc_out[c].value.to_signed() for c in range(min(4, COLS))]
         cocotb.log.info(f"  Cycle {i}: acc_out[0:3] = {acc_vals}")
-    
-    dut.en.value = 0
+
     cocotb.log.info("=== Debug Complete ===")
 
 
@@ -170,7 +167,6 @@ async def test_matmul_identity(dut):
 
     A = rng.integers(1, 6, size=(16, ROWS), dtype=np.int8)
 
-    dut.en.value = 1
     results = await stream_and_collect(dut, A)
 
     for i, row in enumerate(A):
@@ -203,7 +199,6 @@ async def test_matmul(dut):
 
     await load_weights(dut, B)
 
-    dut.en.value = 1
     results = await stream_and_collect(dut, A)
 
     for i in range(4):
@@ -251,9 +246,7 @@ async def test_requant(dut):
     for c in range(COLS):
         dut.bias_in[c].value = 0  # no bias in this test
 
-    dut.en.value = 1
     results = await stream_and_collect(dut, A)
-    dut.en.value = 0
     dut.requant_en.value = 0
 
     # results[] contains the raw acc_out (int32); q_out is a separate port.
@@ -276,7 +269,6 @@ async def test_requant(dut):
     dut.M0.value         = M0_val
     dut.rshift.value     = RSHIFT
     dut.zero_pt.value    = ZERO_PT
-    dut.en.value         = 1
 
     # Stream row 0, then drain until output is valid.
     # cocotb reads in NBA phase (after the rising edge), so q_out[j] for row 0 is
@@ -300,7 +292,6 @@ async def test_requant(dut):
                     f"(acc={C_int32[0][j]}, S={S_float:.6f})"
                 )
 
-    dut.en.value = 0
     dut.requant_en.value = 0
 
 
@@ -326,9 +317,7 @@ async def test_relu_en(dut):
 
     # --- relu_en = 1 ---
     dut.relu_en.value = 1
-    dut.en.value = 1
     results = await stream_and_collect(dut, A)
-    dut.en.value = 0
     dut.relu_en.value = 0
 
     for i in range(4):
@@ -343,9 +332,7 @@ async def test_relu_en(dut):
     await load_weights(dut, B)
 
     dut.relu_en.value = 0
-    dut.en.value = 1
     results_no_relu = await stream_and_collect(dut, A)
-    dut.en.value = 0
 
     for i in range(4):
         for j in range(COLS):

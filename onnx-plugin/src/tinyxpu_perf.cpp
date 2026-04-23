@@ -6,7 +6,7 @@ TinyXpuPerfCounters TinyXpuPerfCounters::from_observations(const SimObservations
     c.obs = obs;
 
     // ── Compute ──────────────────────────────────────────────────────────────
-    // Every en=1 tick, every PE fires.  This is the physical MAC count —
+    // Every streaming tick, every PE fires.  This is the physical MAC count —
     // derived purely from what the driver observed, not from knowing the
     // array topology.
     c.hw_mac_events  = obs.ticks_streaming * obs.hw_rows * obs.hw_cols;

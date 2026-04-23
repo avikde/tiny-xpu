@@ -9,7 +9,7 @@ module pe #(
 ) (
     input  logic                    clk,
     input  logic                    rst_n,
-    input  logic                    en,
+    // Per-column global weight load signal
     input  logic                    weight_ld,
 
     // From the left
@@ -22,6 +22,7 @@ module pe #(
     output logic signed [ACC_WIDTH-1:0]  acc_out
 );
 
+    // Register for weight storage (loaded from acc_in on weight_ld)
     logic signed [DATA_WIDTH-1:0] weight_r;
     logic signed [ACC_WIDTH-1:0]  mult_result;
 
@@ -38,7 +39,7 @@ module pe #(
             acc_out  <= {{(ACC_WIDTH-DATA_WIDTH){acc_in[DATA_WIDTH-1]}},
                          acc_in[DATA_WIDTH-1:0]};
             data_out <= '0;
-        end else if (en) begin
+        end else begin
             data_out <= data_in;
             acc_out  <= acc_in + mult_result;
         end
