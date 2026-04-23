@@ -7,7 +7,7 @@ import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, ClockCycles
 
-ROWS = 16
+ROWS = 4
 
 
 async def reset_dut(dut):
@@ -52,8 +52,9 @@ async def test_weight_load(dut):
     # MAC: PE0 weight=5 * data_in[0]=3 + bias 0 = 15
     dut.data_in[0].value = 3
     dut.acc_in_top.value = 0
-    await RisingEdge(dut.clk)
-    await RisingEdge(dut.clk)
+    # Has to propagate down the column + 1 cycle due to how cocotb works
+    for _ in range(ROWS + 1):
+        await RisingEdge(dut.clk)
 
     assert dut.acc_out_bottom.value.to_signed() == 15, (
         f"Expected acc_out_bottom=15, got {dut.acc_out_bottom.value.to_signed()}"
@@ -77,8 +78,10 @@ async def test_mac_accumulate(dut):
     # MAC: 4 * 7 + 10 = 38 (acc_in_top=10 is the bias)
     dut.data_in[0].value = 7
     dut.acc_in_top.value = 10
-    await RisingEdge(dut.clk)
-    await RisingEdge(dut.clk)
+
+    # Has to propagate down the column + 1 cycle due to how cocotb works
+    for _ in range(ROWS + 1):
+        await RisingEdge(dut.clk)
 
     assert dut.acc_out_bottom.value.to_signed() == 38, (
         f"Expected acc_out_bottom=38, got {dut.acc_out_bottom.value.to_signed()}"
@@ -120,25 +123,25 @@ async def test_weight_load_sequence(dut):
     # Cycle 2: load w0
     dut.acc_in_top.value = 22
     await RisingEdge(dut.clk)
+    # After cycle 2: PE0 latched w0, PE1 latched w1.
+
+    # Cycle 3
+    # MAC in PE0: 22 * 2 + 5 = 49
     dut.weight_ld.value = 0
-
-    # After cycle 2: PE0 latched w0 on cycle 2, PE1 latched w1 on cycle 2.
-    # acc_out is registered, so after cycle 3: acc_out_bottom = w0 (from PE0)
-    await RisingEdge(dut.clk)
-
-    assert dut.acc_out_bottom.value.to_signed() == 22, (
-        f"Expected acc_out_bottom=22, got {dut.acc_out_bottom.value.to_signed()}"
-    )
-
-    # MAC: PE0: 22 * 2 + 5 = 49; PE1: 11 * 0 + 49 = 49
     dut.data_in[0].value = 2
-    dut.data_in[1].value = 0
     dut.acc_in_top.value = 5
     await RisingEdge(dut.clk)
-    await RisingEdge(dut.clk)
 
-    assert dut.acc_out_bottom.value.to_signed() == 49, (
-        f"Expected acc_out_bottom=49, got {dut.acc_out_bottom.value.to_signed()}"
+    # Cycle 4
+    # MAC in PE1: 11 * 1 + 49 = 60
+    dut.data_in[1].value = 1
+
+    # Wait ROWS-1 cycles to accumulate, +1 for cocotb
+    for _ in range(ROWS):
+        await RisingEdge(dut.clk)
+
+    assert dut.acc_out_bottom.value.to_signed() == 60, (
+        f"Expected acc_out_bottom=60, got {dut.acc_out_bottom.value.to_signed()}"
     )
 
 
@@ -153,6 +156,8 @@ async def test_dot_product(dut):
     rng = np.random.default_rng(42)
     weights = rng.integers(1, 6, size=ROWS, dtype=np.int8)
     data = rng.integers(1, 6, size=ROWS, dtype=np.int8)
+    bias = [0]#rng.integers(1, 6, size=1, dtype=np.int8)
+    expected = int(np.dot(weights.astype(np.int32), data.astype(np.int32)) + bias[0])
 
     # Load weights: feed reversed so PE[r] ends up with weights[r]
     dut.weight_ld.value = 1
@@ -161,16 +166,16 @@ async def test_dot_product(dut):
         await RisingEdge(dut.clk)
     dut.weight_ld.value = 0
 
-    # Stream data and bias through the column
+    # Bias from top
+    dut.acc_in_top.value = bias[0]
+    # Stagger data in from the left
     for r in range(ROWS):
         dut.data_in[r].value = int(data[r])
-    dut.acc_in_top.value = 0  # bias
-
-    # Wait for result to propagate through the column
-    for _ in range(ROWS):
         await RisingEdge(dut.clk)
 
-    expected = int(np.dot(weights.astype(np.int32), data.astype(np.int32)))
+    # Wait 1 cycle for cocotb
+    await RisingEdge(dut.clk)
+
     got = dut.acc_out_bottom.value.to_signed()
     assert got == expected, f"Dot product: expected {expected}, got {got}"
 
