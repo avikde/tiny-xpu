@@ -5,7 +5,7 @@
 // Dataflow (weight-stationary, Kung 1982):
 //   - Activations stream east  (→)  one lane per row
 //   - Partial sums cascade south (↓) one lane per column
-//   - Weights are loaded once per tile (weight_in=1), then held stationary
+//   - Weights are loaded once per tile (weight_ld[c]=1), then held stationary
 //
 // External pre-staggering: the driver (or previous layer) is responsible
 // for staggering inputs in time.  Row r should begin streaming r cycles
@@ -43,10 +43,10 @@ module array #(
     // Activation outputs — rightmost column passthrough (useful for chaining)
     output logic signed [DATA_WIDTH-1:0] data_out [ROWS],
 
-    // Weight loading — global signal, broadcast to all PEs.
-    // When weight_ld=1: weight_in_top[c] enters row 0 and cascades down.
-    // When weight_ld=0: acc_wire[0] is '0 (normal accumulation).
-    input  logic                         weight_ld,
+    // Weight loading — one signal per column, shared by all PEs in the column.
+    // When weight_ld[c]=1: weight_in_top[c] enters row 0 and cascades down.
+    // When weight_ld[c]=0: acc_wire[0][c] is '0 (normal accumulation).
+    input  logic                         weight_ld [COLS],
     input  logic signed [DATA_WIDTH-1:0] weight_in_top [COLS],
 
     // Accumulated results from the bottom row, one per column.
@@ -83,7 +83,7 @@ module array #(
             assign data_out[r_b] = data_wire[r_b][COLS];
         end
         for (c_b = 0; c_b < COLS; c_b++) begin : gen_acc_top
-            assign acc_wire[0][c_b] = weight_ld
+            assign acc_wire[0][c_b] = weight_ld[c_b]
                 ? {{(ACC_WIDTH-DATA_WIDTH){weight_in_top[c_b][DATA_WIDTH-1]}},
                    weight_in_top[c_b]}
                 : '0;
@@ -116,7 +116,7 @@ module array #(
                 ) u_pe (
                     .clk       (clk),
                     .rst_n     (rst_n),
-                    .weight_ld (weight_ld),
+                    .weight_ld (weight_ld[c]),
                     .data_in   (data_wire[r][c]),
                     .data_out  (data_wire[r][c+1]),
                     .acc_in    (acc_wire[r][c]),

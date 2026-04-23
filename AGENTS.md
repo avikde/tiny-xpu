@@ -58,8 +58,8 @@ python scripts/run_matmul.py      # ONNX → TinyXPU EP → verify vs NumPy
 
 ## Architecture Notes
 
-- **PE (`pe.sv`):** `weight_in=1` tags `acc_in` as a weight (latched, accumulator reset, forwarded south via `weight_out`). `weight_in=0, en=1` performs MAC: `acc_out = acc_in + weight_r * data_in` (first untagged is bias, subsequent are partial sums). `int8×int8→int32` MAC.
-- **Array (`array.sv`):** No internal de-skewing or input delay lines. The caller is responsible for externally pre-staggering inputs: row `r` must begin `r` cycles after row 0. This enables direct layer chaining without inter-layer buffers. Output `acc_out[c]` for row `i` is valid at cycle `i + ROWS + c`.
+- **PE (`pe.sv`):** `weight_ld=1` latches `acc_in` as a new weight, sets `acc_out` to the weight value (cascading it south), and sets `data_out=0`. `weight_ld=0` performs MAC: `acc_out = acc_in + weight_r * data_in` (first untagged input is bias, subsequent are partial sums). `int8×int8→int32` MAC.
+- **Array (`array.sv`):** `weight_ld[COLS]` is a per-column signal — all PEs in column `c` share `weight_ld[c]`. No internal de-skewing or input delay lines. The caller is responsible for externally pre-staggering inputs: row `r` must begin `r` cycles after row 0. This enables direct layer chaining without inter-layer buffers. Output `acc_out[c]` for row `i` is valid at cycle `i + ROWS + c`.
 
 ## Search / Ignore Rules
 

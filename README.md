@@ -73,7 +73,7 @@ A `ROWS × COLS` PE grid. Dataflow is **weight-stationary**: weights load once, 
 
 **Ports of `array.sv`:**
 - `data_in[ROWS]` — one int8 activation per row per cycle (internally skewed)
-- `weight_in_top[COLS]`, `weight_in` — load weights via systolic cascade (weight_in=1 for ROWS cycles)
+- `weight_in_top[COLS]`, `weight_ld[COLS]` — load weights via systolic cascade (weight_ld=1 for ROWS cycles)
 - `acc_out[COLS]` — raw int32 result per column (no de-skew)
 - `q_out[COLS]` — int8 requantized output (valid when `requant_en=1`)
 
@@ -82,9 +82,9 @@ A `ROWS × COLS` PE grid. Dataflow is **weight-stationary**: weights load once, 
 ### PE (`pe.sv`)
 
 ```
-         weight_in
-             │  en
-             ▼  ▼
+         weight_ld
+             │
+             ▼
           ┌──────────┐
           │    PE    ├──► data_out
           │  weight  │
@@ -92,9 +92,6 @@ data_in──►│  (reg)   │
           │  × + acc │
 acc_in ──►│          ├──► acc_out
           └──────────┘
-             │
-             ▼
-         weight_out
 ```
 
 TO FIX:
