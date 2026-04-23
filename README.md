@@ -73,7 +73,7 @@ A `ROWS × COLS` PE grid. Dataflow is **weight-stationary**: weights load once, 
 
 **Ports of `array.sv`:**
 - `data_in[ROWS]` — one int8 activation per row per cycle (internally skewed)
-- `weight_in[ROWS*COLS]`, `weight_ld` — load all weights in one cycle
+- `weight_in_top[COLS]`, `weight_in` — load weights via systolic cascade (weight_in=1 for ROWS cycles)
 - `acc_out[COLS]` — raw int32 result per column (no de-skew)
 - `q_out[COLS]` — int8 requantized output (valid when `requant_en=1`)
 
@@ -82,7 +82,7 @@ A `ROWS × COLS` PE grid. Dataflow is **weight-stationary**: weights load once, 
 ### PE (`pe.sv`)
 
 ```
-         weight_ld
+         weight_in
              │  en
              ▼  ▼
           ┌──────────┐
@@ -92,6 +92,9 @@ data_in──►│  (reg)   │
           │  × + acc │
 acc_in ──►│          ├──► acc_out
           └──────────┘
+             │
+             ▼
+         weight_out
 ```
 
 TO FIX:
@@ -127,7 +130,7 @@ The time for a `(M,K) × (K,N)` product is `M+R+N` cycles (`R` cycles to fill th
 
 **PE behavior:**
 - `weight_in=1`: Latch as new weight, reset accumulator to 0, pass tagged weight down immediately
-- `weight_ld=0`: Add to accumulator (first untagged is bias, subsequent are partial sums)
+- `weight_in=0`: Add to accumulator (first untagged is bias, subsequent are partial sums)
 - `weight_out` is set to `weight_in` so that it is received by the south PE in the next cycle.
 
 For the matrix product, it takes `M+K` cycles from the first input entry to the start of weight loading for the next product. The next product can start immediately after the first new weight column is loaded over `K` cycles. Therefore, the tile-to-tile **latency is `M+2K` cycles**.

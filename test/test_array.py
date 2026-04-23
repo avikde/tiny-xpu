@@ -21,7 +21,7 @@ async def reset_dut(dut):
     dut.M0.value = 0
     dut.rshift.value = 0
     dut.zero_pt.value = 0
-    dut.weight_ld.value = 0
+    dut.weight_in.value = 0
     for r in range(ROWS):
         dut.data_in[r].value = 0
     for c in range(COLS):
@@ -37,16 +37,16 @@ async def load_weights(dut, B):
     """Load weights via systolic cascade from top edge over ROWS cycles.
 
     At cycle t (0-indexed), row t of B is driven at the top and cascades down.
-    After weight_ld=0, weights need ROWS more cycles to cascade to the bottom row.
+    After weight_in=0, weights need ROWS more cycles to cascade to the bottom row.
     Returns when all PEs have their weights.
     """
-    dut.weight_ld.value = 1
+    dut.weight_in.value = 1
     for load_row in range(ROWS):
         for c in range(COLS):
             dut.weight_in_top[c].value = int(B[load_row][c])
         await RisingEdge(dut.clk)
-    dut.weight_ld.value = 0
-    # Weights continue cascading down for ROWS cycles after ld goes low
+    dut.weight_in.value = 0
+    # Weights continue cascading down for ROWS cycles after weight_in goes low
     await ClockCycles(dut.clk, ROWS)
 
 
@@ -124,7 +124,7 @@ async def test_weight_cascade_debug(dut):
     # Simple 4x4 identity for debugging (we only need first 4 rows/cols visible)
     cocotb.log.info("=== Weight Cascade Debug ===")
     
-    dut.weight_ld.value = 1
+    dut.weight_in.value = 1
     for load_row in range(4):
         for c in range(COLS):
             val = 1 if load_row == c else 0  # Identity pattern
@@ -135,8 +135,8 @@ async def test_weight_cascade_debug(dut):
         acc0 = dut.acc_out[0].value.to_signed() if hasattr(dut.acc_out[0], 'value') else 0
         cocotb.log.info(f"  After edge: acc_out[0] = {acc0}")
     
-    dut.weight_ld.value = 0
-    cocotb.log.info("weight_ld = 0, cascading remaining rows...")
+    dut.weight_in.value = 0
+    cocotb.log.info("weight_in = 0, cascading remaining rows...")
     for i in range(ROWS):
         await RisingEdge(dut.clk)
         acc0 = dut.acc_out[0].value.to_signed() if hasattr(dut.acc_out[0], 'value') else 0

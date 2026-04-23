@@ -23,7 +23,7 @@ struct SimObservations {
     // Clock ticks (one increment per tick() call in the driver)
     int64_t ticks_total;
     int64_t ticks_reset;        // ticks while rst_n == 0
-    int64_t ticks_weight_load;  // ticks while weight_ld == 1  (latch + settle)
+    int64_t ticks_weight_load;  // ticks while weight_in == 1  (latch + settle)
     int64_t ticks_streaming;    // ticks while en == 1
 
     // Element-level data movement (one increment per element written/read)

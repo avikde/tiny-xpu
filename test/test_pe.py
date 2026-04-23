@@ -11,9 +11,9 @@ async def reset_dut(dut):
     """Apply active-low reset for a few cycles."""
     dut.rst_n.value = 0
     dut.en.value = 0
-    dut.weight_ld.value = 0
+    dut.weight_in.value = 0
     dut.data_in.value = 0
-    dut.acc_in.value = 0  # Dual-use: acc_in carries weight during weight_ld=1
+    dut.acc_in.value = 0
     await ClockCycles(dut.clk, 3)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
@@ -29,29 +29,27 @@ async def test_reset(dut):
 
     assert dut.data_out.value == 0, "data_out not zero after reset"
     assert dut.acc_out.value == 0, "acc_out not zero after reset"
+    assert dut.weight_out.value == 0, "weight_out not zero after reset"
 
 
 @cocotb.test()
 async def test_weight_load(dut):
-    """Loading a weight via acc_in should latch the value."""
+    """Loading a weight via acc_in (weight_in=1) should latch the value."""
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
     await reset_dut(dut)
 
-    # Load weight = 5 via acc_in (dual-use: weight_ld=1 means acc_in carries weight)
+    # Load weight = 5: weight_in=1, acc_in carries the weight
     dut.acc_in.value = 5
-    dut.weight_ld.value = 1
+    dut.weight_in.value = 1
     await RisingEdge(dut.clk)
-    dut.weight_ld.value = 0
-    await RisingEdge(dut.clk)
+    dut.weight_in.value = 0
 
-    # Enable a MAC cycle: 5 * 3 + 0 = 15
+    # MAC: 5 * 3 + 0 = 15 (acc_in is bias; 0 here)
     dut.data_in.value = 3
     dut.acc_in.value = 0
     dut.en.value = 1
-
-    # NOTE: this edge does the computation, but cocotb timing nuance requires another cycle for the output to be available.
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)  # output registered
 
@@ -62,19 +60,19 @@ async def test_weight_load(dut):
 
 @cocotb.test()
 async def test_mac_accumulate(dut):
-    """Verify multiply-accumulate with a non-zero partial sum input."""
+    """Verify multiply-accumulate with a non-zero bias input."""
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
     await reset_dut(dut)
 
-    # Load weight = 4 via acc_in (dual-use during weight_ld=1)
+    # Load weight = 4
     dut.acc_in.value = 4
-    dut.weight_ld.value = 1
+    dut.weight_in.value = 1
     await RisingEdge(dut.clk)
-    dut.weight_ld.value = 0
+    dut.weight_in.value = 0
 
-    # MAC: 4 * 7 + 10 = 38
+    # MAC: 4 * 7 + 10 = 38 (acc_in=10 is the bias)
     dut.data_in.value = 7
     dut.acc_in.value = 10
     dut.en.value = 1
@@ -88,7 +86,7 @@ async def test_mac_accumulate(dut):
 
 @cocotb.test()
 async def test_data_passthrough(dut):
-    """data_in should be forwarded to data_out when enabled."""
+    """data_in should be forwarded to data_out when enabled (no weight loaded)."""
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
@@ -112,12 +110,13 @@ async def test_enable_gating(dut):
 
     await reset_dut(dut)
 
-    # Do one enabled cycle: load weight = 2 via acc_in
+    # Load weight = 2
     dut.acc_in.value = 2
-    dut.weight_ld.value = 1
+    dut.weight_in.value = 1
     await RisingEdge(dut.clk)
-    dut.weight_ld.value = 0
+    dut.weight_in.value = 0
 
+    # MAC: 2 * 3 + 0 = 6
     dut.data_in.value = 3
     dut.acc_in.value = 0
     dut.en.value = 1
@@ -134,6 +133,39 @@ async def test_enable_gating(dut):
 
     assert dut.acc_out.value.to_signed() == prev_acc, (
         "acc_out changed while en=0"
+    )
+
+
+@cocotb.test()
+async def test_weight_out_propagation(dut):
+    """weight_out follows weight_in with a one-cycle delay (registered tag)."""
+    clock = Clock(dut.clk, 10, unit="ns")
+    cocotb.start_soon(clock.start())
+
+    await reset_dut(dut)
+
+    assert dut.weight_out.value == 0, "weight_out not zero before loading"
+
+    # Drive weight_in=1 — weight_out should appear one cycle later
+    dut.acc_in.value = 7
+    dut.weight_in.value = 1
+    await RisingEdge(dut.clk)
+    # After this edge: weight_out is still 0 (not yet registered)
+    assert dut.weight_out.value == 0, "weight_out changed same cycle as weight_in"
+
+    await RisingEdge(dut.clk)
+    assert dut.weight_out.value == 1, (
+        f"Expected weight_out=1 after one cycle, got {dut.weight_out.value}"
+    )
+
+    # Deassert weight_in — weight_out should drop one cycle later
+    dut.weight_in.value = 0
+    await RisingEdge(dut.clk)
+    assert dut.weight_out.value == 1, "weight_out dropped same cycle as weight_in"
+
+    await RisingEdge(dut.clk)
+    assert dut.weight_out.value == 0, (
+        f"Expected weight_out=0 after one cycle, got {dut.weight_out.value}"
     )
 
 
