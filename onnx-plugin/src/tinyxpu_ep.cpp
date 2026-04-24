@@ -797,14 +797,12 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     // HW_ROWS x HW_COLS blocks and accumulating partial sums.
     const int8_t* A_i8  = static_cast<const int8_t*>(A_raw);
     const int8_t* B_i8  = static_cast<const int8_t*>(B_raw);
-    // NOTE: apply_relu, apply_requant, C_i8 removed — hardware only produces int32.
     // QLinearMatMul and Relu must be handled in software or outside this EP.
     int32_t* C_i32 = static_cast<int32_t*>(C_raw);
 
     // run_slice: drive the Verilator systolic array for one 2-D tile.
     // A_sl: [total_M, K_sl], B_sl: [K_sl, N_sl] (contiguous), C_sl: [total_M, N_sl].
     // K_sl <= HW_ROWS and N_sl <= HW_COLS must hold.
-    // NOTE: C_i8_sl parameter removed — hardware only produces int32 accumulator output.
     // Requantization (if needed) must happen in software after the array returns.
     auto run_slice = [&](const int8_t* A_sl, const int8_t* B_sl,
                          int32_t* C_sl, int8_t* /* C_i8_sl */,
@@ -876,9 +874,9 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         }
     };
 
+    // FIXME: Tiling should be in hardware
     // run_tiled: tile [total_M, K] x [K, N] into HW_ROWS x HW_COLS blocks.
     // Tiles along K are summed into the int32 output; tiles along N are independent.
-    // NOTE: C_i8_base parameter removed — hardware only produces int32. Requantization
     // (if needed for QLinearMatMul) must happen in software after the array returns.
     auto run_tiled = [&](const int8_t* A_base, const int8_t* B_base,
                          int32_t* C_base, int8_t* /* C_i8_base */,
@@ -906,7 +904,6 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
                 std::vector<int32_t> C_tile(total_M * N_t, 0);
 
                 SimObservations tile_obs{};
-                // NOTE: C_i8_tile removed — hardware only produces int32.
                 run_slice(A_tile.data(), B_tile.data(),
                           C_tile.data(), nullptr,
                           total_M, K_t, N_t, tile_obs);
