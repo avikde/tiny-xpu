@@ -21,7 +21,7 @@ async def reset_dut(dut):
         dut.data_in_left[r].value = 0
     for c in range(COLS):
         dut.acc_in_top[c].value = 0
-    await ClockCycles(dut.clk, 3)
+    await ClockCycles(dut.clk, 1) # reset
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
 

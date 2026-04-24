@@ -507,7 +507,6 @@ OrtStatus* ORT_API_CALL SampleEp::CompileImpl(
         }
 
         auto* compute_info = new SampleNodeComputeInfo(apis, op_type_str, transB);
-        // NOTE: QLinearMatMul had has_requant=true — removed since hardware no longer
         // supports requantization. QLinearMatMul must be handled outside this EP or
         // requant must be done in software after the array returns int32.
 
@@ -830,7 +829,8 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         arr.eval();
 
 
-        for (int i = 0; i < 3; ++i) { tick(); obs.ticks_reset++; }
+        tick();
+        obs.ticks_reset++;
         arr.rst_n = 1;
         tick();
 
