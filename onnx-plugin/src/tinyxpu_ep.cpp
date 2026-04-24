@@ -781,8 +781,7 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     status = info->ort_api->GetTensorMutableData(output, &C_raw);
     if (status) return status;
 
-    // ---- QLinearMatMul scale/zp reading removed -----------------------------------
-    // NOTE: has_requant is always false now (hardware doesn't support requantization).
+    // ---- QLinearMatMul scale/zp reading removed ------------------------------
     // QLinearMatMul still reaches ComputeImpl but must be handled in software after
     // the Verilator array returns int32 results, or handled outside this EP.
     // TODO: QLinearMatMul should be rejected in GetCapabilityImpl or Compilem_impl
@@ -822,14 +821,15 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         };
 
         arr.clk = 0; arr.rst_n = 0;
+        // Initialization
         for (int c = 0; c < HW_COLS; ++c) arr.weight_ld[c] = 0;
-        // TODO: bias_in removed — array loads weights directly from acc_in_top.
         // Load per-column bias via acc_in_top before weight_ld if needed.
         for (int k = 0; k < HW_ROWS; ++k) arr.data_in_left[k] = 0;
-        // TODO: acc_in_top renamed — array.sv uses acc_in_top[COLS] as weight
         // input when weight_ld[c]=1. Weights flow through the accumulator cascade.
         for (int c = 0; c < HW_COLS; ++c) arr.acc_in_top[c] = 0;
         arr.eval();
+
+
         for (int i = 0; i < 3; ++i) { tick(); obs.ticks_reset++; }
         arr.rst_n = 1;
         tick();

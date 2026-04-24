@@ -36,7 +36,7 @@ async def load_weights(dut, W):
     """
     for c in range(COLS):
         dut.weight_ld[c].value = 1
-    for load_row in range(W.shape[1]):
+    for load_row in range(ROWS):
         for c in range(COLS):
             dut.acc_in_top[c].value = int(W[ROWS - load_row - 1][c]) # reversed
         await RisingEdge(dut.clk)
