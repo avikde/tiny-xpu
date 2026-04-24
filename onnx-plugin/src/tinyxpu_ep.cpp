@@ -200,9 +200,10 @@ OrtStatus* ORT_API_CALL SampleEpFactory::CreateEpImpl(
     (void)ep_metadata_pairs;
     (void)num_devices;
     (void)session_options;
+    (void)logger;
 
     auto* factory = FromOrt(this_);
-    auto* sample_ep = new SampleEp(factory, logger);
+    auto* sample_ep = new SampleEp(factory);
     *ep = sample_ep->GetOrtEp();
     return nullptr;
 }
@@ -282,8 +283,8 @@ const SampleEp* SampleEp::FromOrt(const OrtEp* ort_ep) {
     return CONTAINER_OF_CONST(ort_ep, SampleEp, ep_);
 }
 
-SampleEp::SampleEp(SampleEpFactory* factory, const OrtLogger* session_logger)
-    : factory_(factory), session_logger_(session_logger) {
+SampleEp::SampleEp(SampleEpFactory* factory)
+    : factory_(factory) {
 
     // Zero-initialize the OrtEp struct
     std::memset(&ep_, 0, sizeof(ep_));
@@ -449,7 +450,8 @@ OrtStatus* ORT_API_CALL SampleEp::CompileImpl(
         // Read op type from the fused node
         const char* op_type_cstr = nullptr;
         if (fused_nodes && fused_nodes[i]) {
-            apis.ort_api->Node_GetOperatorType(fused_nodes[i], &op_type_cstr);
+            OrtStatus* s = apis.ort_api->Node_GetOperatorType(fused_nodes[i], &op_type_cstr);
+            if (s) return s;
         }
         const std::string op_type_str = op_type_cstr ? op_type_cstr : "";
 
@@ -663,10 +665,12 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         s = info->ort_api->GetTensorTypeAndShape(input, &si);
         if (s) return s;
         size_t ndim = 0;
-        info->ort_api->GetDimensionsCount(si, &ndim);
+        s = info->ort_api->GetDimensionsCount(si, &ndim);
+        if (s) { info->ort_api->ReleaseTensorTypeAndShapeInfo(si); return s; }
         std::vector<int64_t> shape(ndim);
-        info->ort_api->GetDimensions(si, shape.data(), ndim);
+        s = info->ort_api->GetDimensions(si, shape.data(), ndim);
         info->ort_api->ReleaseTensorTypeAndShapeInfo(si);
+        if (s) return s;
 
         OrtValue* output = nullptr;
         s = info->ort_api->KernelContext_GetOutput(kernel_context, 0, shape.data(), shape.size(), &output);
@@ -674,8 +678,10 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
 
         const void* in_raw = nullptr;
         void* out_raw = nullptr;
-        info->ort_api->GetTensorData(input, &in_raw);
-        info->ort_api->GetTensorMutableData(output, &out_raw);
+        s = info->ort_api->GetTensorData(input, &in_raw);
+        if (s) return s;
+        s = info->ort_api->GetTensorMutableData(output, &out_raw);
+        if (s) return s;
 
         int64_t total = 1;
         for (auto d : shape) total *= d;

@@ -113,7 +113,7 @@ private:
 // ============================================================================
 class SampleEp {
 public:
-    SampleEp(SampleEpFactory* factory, const OrtLogger* session_logger);
+    SampleEp(SampleEpFactory* factory);
     ~SampleEp();
 
     // Get the OrtEp struct to return to ORT
@@ -179,7 +179,7 @@ private:
 
     OrtEp ep_;  // The actual OrtEp struct
     SampleEpFactory* factory_;
-    const OrtLogger* session_logger_;
+    // NOTE: session_logger_ removed — was stored but never used.
 };
 
 // ============================================================================
