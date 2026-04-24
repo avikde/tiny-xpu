@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -76,6 +77,7 @@ static void loadWeights(
   // Enable weight_ld on the columns we need
   for (int c = 0; c < N; ++c) arr.weight_ld[c] = 1;
 
+  // printf("Loading W=\n");
   // Weights loaded reversed W[K-1-load_row, c]
   for (int W_row = TINYXPU_ARRAY_ROWS - 1; W_row >= 0; --W_row) {
     for (int c = 0; c < N; ++c) {
@@ -85,7 +87,9 @@ static void loadWeights(
         arr.acc_in_top[c] = static_cast<int8_t>(w);
         obs.weight_writes++;
       }
+      // printf("%d ", arr.acc_in_top[c]);
     }
+    // printf("<- row %d\n", W_row);
     verilatorTick(arr, obs);
     obs.ticks_weight_load++;
   }
@@ -104,17 +108,20 @@ static void streamAndCollect(Varray& arr, SimObservations& obs, int32_t* Y,
 
   const int cycles_needed = M + TINYXPU_ARRAY_ROWS + N;
 
-  for (int t = 1; t <= cycles_needed; ++t) {
+  // printf("Loading X=\n");
+  for (int t = 1; t < cycles_needed; ++t) {
     // Rows enter as /x2/x1/ -> staggered
     for (int r = 0; r < TINYXPU_ARRAY_ROWS; ++r) {
-      int src_row = t - r - 1;  // A index for this row at this cycle
+      int src_row = t - r - 1;
       if (0 <= src_row && src_row < M) {
-        arr.data_in_left[r] = X[src_row * K + r];
+        arr.data_in_left[r] = static_cast<int8_t>(X[src_row * K + r]);
         obs.activation_writes++;
       } else {
         arr.data_in_left[r] = 0;
       }
+      // printf("%d ", (int8_t)arr.data_in_left[r]);
     }
+    // printf("<- cycle %d\n", t);
     // Biases enter as:
     // [    b22]
     // [b21 b12]
@@ -132,7 +139,7 @@ static void streamAndCollect(Varray& arr, SimObservations& obs, int32_t* Y,
 
     // After edge t, column j of row out_row = t - ROWS - j - 1 is readable.
     for (int j = 0; j < N; ++j) {
-      int out_row = t - TINYXPU_ARRAY_ROWS - j - 1;
+      int out_row = t - TINYXPU_ARRAY_ROWS - j;
       if (0 <= out_row && out_row < M) {
         Y[out_row * N + j] = static_cast<int32_t>(arr.acc_out_bottom[j]);
         obs.output_reads++;

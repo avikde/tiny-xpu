@@ -109,7 +109,7 @@ def main() -> int:
 
     expected = A.astype(np.int32) @ W_ref
 
-    print(f"Input A (int8): shape {A.shape},  first row: {A[0]}")
+    print(f"Input A (int8): shape {A.shape},  first 4 rows:\n{A[:4]}")
     print(f"Weight W (int8, loaded from model):\n{W_ref.astype(np.int8)}")
     print()
 
@@ -121,8 +121,8 @@ def main() -> int:
     print()
 
     Y = np.asarray(result[0])
-    print(f"Output Y = A @ W (int32): shape {Y.shape},  first row: {Y[0]}")
-    print(f"Expected (NumPy reference):           first row: {expected[0]}")
+    print(f"Output Y = A @ W (int32): shape {Y.shape},  first 4 rows:\n{Y[:4]}")
+    print(f"Expected (NumPy reference):           first 4 rows:\n{expected[:4]}")
     print()
 
     # =========================================================================
