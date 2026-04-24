@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "tinyxpu_common.h"
+
 #include <onnxruntime_c_api.h>
 
 #include <string>
@@ -12,21 +14,6 @@
 // Forward declarations
 class SampleEpFactory;
 class SampleEp;
-
-// ============================================================================
-// Utility structure to hold API pointers
-// ============================================================================
-struct ApiPtrs {
-    const OrtApi* ort_api = nullptr;
-    const OrtEpApi* ep_api = nullptr;
-    const OrtLogger* logger = nullptr;
-
-    void Init(const OrtApiBase* api_base, const OrtLogger* log) {
-        ort_api = api_base->GetApi(ORT_API_VERSION);
-        ep_api = ort_api->GetEpApi();
-        logger = log;
-    }
-};
 
 // ============================================================================
 // SampleEpFactory - Creates EP instances
@@ -180,44 +167,4 @@ private:
     OrtEp ep_;  // The actual OrtEp struct
     SampleEpFactory* factory_;
     // NOTE: session_logger_ removed — was stored but never used.
-};
-
-// ============================================================================
-// SampleNodeComputeInfo - Implements computation for fused nodes
-// Uses composition to wrap OrtNodeComputeInfo
-// ============================================================================
-class SampleNodeComputeInfo {
-public:
-    SampleNodeComputeInfo(const ApiPtrs& apis, std::string op_type_str,
-                          bool transB_flag = false, bool fused_relu_flag = false);
-
-    OrtNodeComputeInfo* GetOrtComputeInfo() { return &compute_info_; }
-
-    static SampleNodeComputeInfo* FromOrt(OrtNodeComputeInfo* ort_info);
-
-    const OrtApi* ort_api;
-    const OrtEpApi* ep_api;
-    // TODO: op_type should be narrowed to only MatMulInteger / MatMul / Gemm.
-    // QLinearMatMul and Relu are no longer supported by this EP.
-    std::string op_type;   // "MatMulInteger", "MatMul", "Gemm"
-    bool transB;           // Gemm only: inferred from B's shape in CompileImpl
-    // NOTE: fused_relu, has_requant, requant_* fields removed — hardware no longer
-    // supports ReLU or requantization. QLinearMatMul must be handled externally.
-
-private:
-    static OrtStatus* ORT_API_CALL CreateStateImpl(
-        OrtNodeComputeInfo* this_,
-        OrtNodeComputeContext* compute_context,
-        void** compute_state) noexcept;
-
-    static OrtStatus* ORT_API_CALL ComputeImpl(
-        OrtNodeComputeInfo* this_,
-        void* compute_state,
-        OrtKernelContext* kernel_context) noexcept;
-
-    static void ORT_API_CALL ReleaseStateImpl(
-        OrtNodeComputeInfo* this_,
-        void* compute_state) noexcept;
-
-    OrtNodeComputeInfo compute_info_;  // The actual OrtNodeComputeInfo struct
 };

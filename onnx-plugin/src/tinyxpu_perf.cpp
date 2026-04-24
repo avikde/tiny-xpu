@@ -1,5 +1,18 @@
 #include "tinyxpu_perf.h"
 
+// Perf counters from the most recent MatMulInteger execution.
+// Written by the driver; read by tinyxpu_get_last_perf().
+// Not thread-safe: single-threaded Verilator simulation assumed.
+static TinyXpuPerfCounters g_last_perf{};
+
+void tinyxpu_set_last_perf(const TinyXpuPerfCounters& counters) {
+    g_last_perf = counters;
+}
+
+const TinyXpuPerfCounters& tinyxpu_get_last_perf_ref() {
+    return g_last_perf;
+}
+
 TinyXpuPerfCounters TinyXpuPerfCounters::from_observations(const SimObservations& obs)
 {
     TinyXpuPerfCounters c{};

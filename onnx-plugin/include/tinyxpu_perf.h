@@ -86,3 +86,7 @@ struct TinyXpuPerfCounters {
     // ── Factory and display ──────────────────────────────────────────────────
     static TinyXpuPerfCounters from_observations(const SimObservations& obs);
 };
+
+// Global perf-state accessors (single-threaded assumption).
+void tinyxpu_set_last_perf(const TinyXpuPerfCounters& counters);
+const TinyXpuPerfCounters& tinyxpu_get_last_perf_ref();
