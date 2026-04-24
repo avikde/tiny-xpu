@@ -62,7 +62,7 @@ OrtStatus* ORT_API_CALL TinyXPUDriver::CreateStateImpl(
 }
 
 #ifdef TINYXPU_USE_VERILATOR
-static void verilatorTick(Varray& arr, SimObservations &obs) {
+static void verilatorTick(Varray& arr, SimObservations& obs) {
   arr.clk = 1;
   arr.eval();
   arr.clk = 0;
@@ -92,6 +92,52 @@ static void loadWeights(
   // Reset weight_ld
   for (int c = 0; c < N; ++c) arr.weight_ld[c] = 0;
   // Can accept new inputs before the next clock cycle, so do not tick()
+}
+
+// Y = output MxN = B + X @ W
+// X = MxK and W = KxN must have already been loaded using loadWeights
+// NOTE: if K < ROWS then it will waste cycles waiting for results
+// this can be pipelined later
+static void streamAndCompute(Varray& arr, SimObservations& obs, int32_t* Y,
+    const int8_t* X, const int8_t* B, int M, int K, int N) {
+
+  const int cycles_needed = M + TINYXPU_ARRAY_ROWS + N;
+
+  for (int t = 1; t <= cycles_needed; ++t) {
+    // Rows enter as /x2/x1/ -> staggered
+    for (int r = 0; r < TINYXPU_ARRAY_ROWS; ++r) {
+      int src_row = t - r - 1;  // A index for this row at this cycle
+      if (0 <= src_row && src_row < M) {
+        arr.data_in_left[r] = X[src_row * K + r];
+        obs.activation_writes++;
+      } else {
+        arr.data_in_left[r] = 0;
+      }
+    }
+    // Biases enter as:
+    // [    b22]
+    // [b21 b12]
+    // [b11  0 ]
+    for (int c = 0; c < N; ++c) {
+      arr.acc_in_top[c] = 0;
+      int src_row = t - c - 1;  // A index for this row at this cycle
+      if (B != nullptr && 0 <= src_row && src_row < M) {
+        arr.acc_in_top[c] = B[src_row * N + c];
+      }
+    }
+
+    verilatorTick(arr, obs);
+    obs.ticks_streaming++;
+
+    // After edge t, column j of row out_row = t - ROWS - j - 1 is readable.
+    for (int j = 0; j < N; ++j) {
+      int out_row = t - TINYXPU_ARRAY_ROWS - j - 1;
+      if (0 <= out_row && out_row < M) {
+        Y[out_row * N + j] = static_cast<int32_t>(arr.acc_out_bottom[j]);
+        obs.output_reads++;
+      }
+    }
+  }
 }
 #endif
 
@@ -272,7 +318,7 @@ OrtStatus* ORT_API_CALL TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_,
     (void)C_sl;  // silence unused param warning
     obs.hw_rows = HW_ROWS;
     obs.hw_cols = HW_COLS;
-
+    // FIXME: reuse for slices
     VerilatedContext ctx;
     Varray arr{&ctx};
     struct Guard {
@@ -296,35 +342,7 @@ OrtStatus* ORT_API_CALL TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_,
     verilatorTick(arr, obs);
 
     loadWeights(arr, obs, B_sl, K_sl, N_sl);
-
-    const int64_t total_ticks = total_M + HW_ROWS + N_sl - 2;
-    for (int64_t t = 0; t < total_ticks; ++t) {
-      // External pre-staggering: row r's element at (t-r) enters at cycle t.
-      // Row 0 enters at t=0, row 1 at t=1, etc.
-      for (int r = 0; r < HW_ROWS; ++r) {
-        const int64_t src_row = t - r;
-        if (src_row >= 0 && src_row < total_M && r < K_sl) {
-          int8_t a = A_sl[src_row * K_sl + r];
-          arr.data_in_left[r] = static_cast<uint8_t>(a);
-          obs.activation_writes++;
-        } else {
-          arr.data_in_left[r] = 0;
-        }
-      }
-      verilatorTick(arr, obs);
-      obs.ticks_streaming++;
-
-      // NOTE: acc_out_bottom replaced acc_out; q_out removed (no requant in
-      // hardware).
-      for (int j = 0; j < N_sl; ++j) {
-        const int64_t out_row = t - (HW_ROWS + j - 1);
-        if (out_row >= 0 && out_row < total_M) {
-          C_sl[out_row * N_sl + j] =
-              static_cast<int32_t>(arr.acc_out_bottom[j]);
-          obs.output_reads++;
-        }
-      }
-    }
+    streamAndCompute(arr, obs, C_sl, A_sl, nullptr, total_M, K_sl, N_sl);
   };
 
   // FIXME: Tiling should be in hardware
