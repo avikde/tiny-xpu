@@ -77,13 +77,14 @@ static void loadWeights(
   for (int c = 0; c < N; ++c) arr.weight_ld[c] = 1;
 
   // Weights loaded reversed W[K-1-load_row, c]
-  for (int load_row = 0; load_row < K; ++load_row) {
+  for (int W_row = TINYXPU_ARRAY_ROWS - 1; W_row >= 0; --W_row) {
     for (int c = 0; c < N; ++c) {
-      int8_t w = W[(K - 1 - load_row) * N + c];
-      // Weights loaded through acc_in_top; pe.sv extracts weight_r from
-      // acc_in on weight_ld.
-      arr.acc_in_top[c] = static_cast<int8_t>(w);
-      obs.weight_writes++;
+      arr.acc_in_top[c] = 0;
+      if (W_row < K) {
+        const int8_t w = W[W_row * N + c];
+        arr.acc_in_top[c] = static_cast<int8_t>(w);
+        obs.weight_writes++;
+      }
     }
     verilatorTick(arr, obs);
     obs.ticks_weight_load++;
@@ -98,7 +99,7 @@ static void loadWeights(
 // X = MxK and W = KxN must have already been loaded using loadWeights
 // NOTE: if K < ROWS then it will waste cycles waiting for results
 // this can be pipelined later
-static void streamAndCompute(Varray& arr, SimObservations& obs, int32_t* Y,
+static void streamAndCollect(Varray& arr, SimObservations& obs, int32_t* Y,
     const int8_t* X, const int8_t* B, int M, int K, int N) {
 
   const int cycles_needed = M + TINYXPU_ARRAY_ROWS + N;
@@ -342,7 +343,7 @@ OrtStatus* ORT_API_CALL TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_,
     verilatorTick(arr, obs);
 
     loadWeights(arr, obs, B_sl, K_sl, N_sl);
-    streamAndCompute(arr, obs, C_sl, A_sl, nullptr, total_M, K_sl, N_sl);
+    streamAndCollect(arr, obs, C_sl, A_sl, nullptr, total_M, K_sl, N_sl);
   };
 
   // FIXME: Tiling should be in hardware
@@ -428,45 +429,7 @@ OrtStatus* ORT_API_CALL TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_,
 
   tinyxpu_set_last_perf(TinyXpuPerfCounters::from_observations(obs));
 #else
-  // CPU fallback: MatMul (float32) or Gemm (float32 with optional bias +
-  // transB)
-  const float* A = static_cast<const float*>(A_raw);
-  const float* B = static_cast<const float*>(B_raw);
-  float* C = static_cast<float*>(C_raw);
-
-  const int64_t total_M = batch_A * M;
-
-  // Core matmul: C[i,j] = sum_k A[i,k] * B_eff[k,j]
-  // transB=true: B is stored as [N, K], so B_eff[k,j] = B[j*K + k]
-  // transB=false: B is stored as [K, N], so B_eff[k,j] = B[k*N + j]
-  for (int64_t i = 0; i < total_M; ++i) {
-    for (int64_t j = 0; j < N; ++j) {
-      float acc = 0.0f;
-      for (int64_t k = 0; k < K; ++k) {
-        const float b_val = info->transB ? B[j * K + k] : B[k * N + j];
-        acc += A[i * K + k] * b_val;
-      }
-      C[i * N + j] = acc;
-    }
-  }
-
-  // Gemm: add optional bias (3rd input)
-  if (info->op_type == "Gemm") {
-    size_t num_inputs = 0;
-    info->ort_api->KernelContext_GetInputCount(kernel_context, &num_inputs);
-    if (num_inputs >= 3) {
-      const OrtValue* input_C = nullptr;
-      if (!info->ort_api->KernelContext_GetInput(kernel_context, 2, &input_C) &&
-          input_C) {
-        const void* bias_raw = nullptr;
-        if (!info->ort_api->GetTensorData(input_C, &bias_raw) && bias_raw) {
-          const float* bias = static_cast<const float*>(bias_raw);
-          for (int64_t i = 0; i < total_M; ++i)
-            for (int64_t j = 0; j < N; ++j) C[i * N + j] += bias[j];
-        }
-      }
-    }
-  }
+#error "Hardware execution is not supported yet"
 #endif
 
   return nullptr;  // Success
