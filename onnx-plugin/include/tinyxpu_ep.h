@@ -37,28 +37,28 @@ class SampleEpFactory {
 
  private:
   // OrtEpFactory callback implementations (1.23 API)
-  static const char* ORT_API_CALL
-  GetNameImpl(const OrtEpFactory* this_) noexcept;
-  static const char* ORT_API_CALL
-  GetVendorImpl(const OrtEpFactory* this_) noexcept;
-  static uint32_t ORT_API_CALL
-  GetVendorIdImpl(const OrtEpFactory* this_) noexcept;
-  static const char* ORT_API_CALL
-  GetVersionImpl(const OrtEpFactory* this_) noexcept;
+  static const char* ORT_API_CALL GetNameImpl(
+      const OrtEpFactory* this_) noexcept;
+  static const char* ORT_API_CALL GetVendorImpl(
+      const OrtEpFactory* this_) noexcept;
+  static uint32_t ORT_API_CALL GetVendorIdImpl(
+      const OrtEpFactory* this_) noexcept;
+  static const char* ORT_API_CALL GetVersionImpl(
+      const OrtEpFactory* this_) noexcept;
 
-  static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(
-      OrtEpFactory* this_, const OrtHardwareDevice* const* devices,
-      size_t num_devices, OrtEpDevice** ep_devices, size_t max_ep_devices,
+  static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(OrtEpFactory* this_,
+      const OrtHardwareDevice* const* devices, size_t num_devices,
+      OrtEpDevice** ep_devices, size_t max_ep_devices,
       size_t* num_ep_devices) noexcept;
 
-  static OrtStatus* ORT_API_CALL
-  CreateEpImpl(OrtEpFactory* this_, const OrtHardwareDevice* const* devices,
-               const OrtKeyValuePairs* const* ep_metadata_pairs,
-               size_t num_devices, const OrtSessionOptions* session_options,
-               const OrtLogger* logger, OrtEp** ep) noexcept;
+  static OrtStatus* ORT_API_CALL CreateEpImpl(OrtEpFactory* this_,
+      const OrtHardwareDevice* const* devices,
+      const OrtKeyValuePairs* const* ep_metadata_pairs, size_t num_devices,
+      const OrtSessionOptions* session_options, const OrtLogger* logger,
+      OrtEp** ep) noexcept;
 
-  static void ORT_API_CALL ReleaseEpImpl(OrtEpFactory* this_,
-                                         OrtEp* ep) noexcept;
+  static void ORT_API_CALL ReleaseEpImpl(
+      OrtEpFactory* this_, OrtEp* ep) noexcept;
 
   // 1.23 optional callback stubs
   static OrtStatus* ORT_API_CALL ValidateCompiledModelCompatibilityInfoImpl(
@@ -66,19 +66,19 @@ class SampleEpFactory {
       size_t num_devices, const char* compatibility_info,
       OrtCompiledModelCompatibility* model_compatibility) noexcept;
 
-  static OrtStatus* ORT_API_CALL
-  CreateAllocatorImpl(OrtEpFactory* this_, const OrtMemoryInfo* memory_info,
-                      const OrtKeyValuePairs* allocator_options,
-                      OrtAllocator** allocator) noexcept;
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_,
+      const OrtMemoryInfo* memory_info,
+      const OrtKeyValuePairs* allocator_options,
+      OrtAllocator** allocator) noexcept;
 
-  static void ORT_API_CALL
-  ReleaseAllocatorImpl(OrtEpFactory* this_, OrtAllocator* allocator) noexcept;
+  static void ORT_API_CALL ReleaseAllocatorImpl(
+      OrtEpFactory* this_, OrtAllocator* allocator) noexcept;
 
   static OrtStatus* ORT_API_CALL CreateDataTransferImpl(
       OrtEpFactory* this_, OrtDataTransferImpl** data_transfer) noexcept;
 
-  static bool ORT_API_CALL
-  IsStreamAwareImpl(const OrtEpFactory* this_) noexcept;
+  static bool ORT_API_CALL IsStreamAwareImpl(
+      const OrtEpFactory* this_) noexcept;
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(
       OrtEpFactory* this_, const OrtMemoryDevice* memory_device,
@@ -113,44 +113,42 @@ class SampleEp {
   // OrtEp callback implementations (1.23 API)
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_) noexcept;
 
-  static OrtStatus* ORT_API_CALL
-  GetCapabilityImpl(OrtEp* this_, const OrtGraph* graph,
-                    OrtEpGraphSupportInfo* graph_support_info) noexcept;
+  static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_,
+      const OrtGraph* graph,
+      OrtEpGraphSupportInfo* graph_support_info) noexcept;
 
-  static OrtStatus* ORT_API_CALL CompileImpl(
-      OrtEp* this_, const OrtGraph** graphs, const OrtNode** fused_nodes,
-      size_t count, OrtNodeComputeInfo** node_compute_infos,
+  static OrtStatus* ORT_API_CALL CompileImpl(OrtEp* this_,
+      const OrtGraph** graphs, const OrtNode** fused_nodes, size_t count,
+      OrtNodeComputeInfo** node_compute_infos,
       OrtNode** ep_context_nodes) noexcept;
 
-  static void ORT_API_CALL ReleaseNodeComputeInfosImpl(
-      OrtEp* this_, OrtNodeComputeInfo** node_compute_infos,
+  static void ORT_API_CALL ReleaseNodeComputeInfosImpl(OrtEp* this_,
+      OrtNodeComputeInfo** node_compute_infos,
       size_t num_node_compute_infos) noexcept;
 
   // 1.23 optional callback stubs for OrtEp
   static OrtStatus* ORT_API_CALL GetPreferredDataLayoutImpl(
       OrtEp* this_, OrtEpDataLayout* preferred_data_layout) noexcept;
 
-  static OrtStatus* ORT_API_CALL ShouldConvertDataLayoutForOpImpl(
-      OrtEp* this_, const char* domain, const char* op_type,
+  static OrtStatus* ORT_API_CALL ShouldConvertDataLayoutForOpImpl(OrtEp* this_,
+      const char* domain, const char* op_type,
       OrtEpDataLayout target_data_layout, int* should_convert) noexcept;
 
-  static OrtStatus* ORT_API_CALL SetDynamicOptionsImpl(
-      OrtEp* this_, const char* const* option_keys,
-      const char* const* option_values, size_t num_options) noexcept;
+  static OrtStatus* ORT_API_CALL SetDynamicOptionsImpl(OrtEp* this_,
+      const char* const* option_keys, const char* const* option_values,
+      size_t num_options) noexcept;
 
-  static OrtStatus* ORT_API_CALL
-  OnRunStartImpl(OrtEp* this_, const OrtRunOptions* run_options) noexcept;
+  static OrtStatus* ORT_API_CALL OnRunStartImpl(
+      OrtEp* this_, const OrtRunOptions* run_options) noexcept;
 
   static OrtStatus* ORT_API_CALL OnRunEndImpl(OrtEp* this_,
-                                              const OrtRunOptions* run_options,
-                                              bool sync_stream) noexcept;
+      const OrtRunOptions* run_options, bool sync_stream) noexcept;
 
-  static OrtStatus* ORT_API_CALL
-  EpCreateAllocatorImpl(OrtEp* this_, const OrtMemoryInfo* memory_info,
-                        OrtAllocator** allocator) noexcept;
+  static OrtStatus* ORT_API_CALL EpCreateAllocatorImpl(OrtEp* this_,
+      const OrtMemoryInfo* memory_info, OrtAllocator** allocator) noexcept;
 
-  static OrtStatus* ORT_API_CALL EpCreateSyncStreamForDeviceImpl(
-      OrtEp* this_, const OrtMemoryDevice* memory_device,
+  static OrtStatus* ORT_API_CALL EpCreateSyncStreamForDeviceImpl(OrtEp* this_,
+      const OrtMemoryDevice* memory_device,
       OrtSyncStreamImpl** stream) noexcept;
 
   static const char* ORT_API_CALL GetCompiledModelCompatibilityInfoImpl(

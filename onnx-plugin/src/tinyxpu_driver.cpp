@@ -32,7 +32,7 @@ TinyXPUDriver* TinyXPUDriver::FromOrt(OrtNodeComputeInfo* ort_info) {
 }
 
 TinyXPUDriver::TinyXPUDriver(const ApiPtrs& apis, std::string op_type_str,
-                             bool transB_flag, bool /* fused_relu_flag */)
+    bool transB_flag, bool /* fused_relu_flag */)
     : ort_api(apis.ort_api),
       ep_api(apis.ep_api),
       op_type(std::move(op_type_str)),
@@ -61,9 +61,8 @@ OrtStatus* ORT_API_CALL TinyXPUDriver::CreateStateImpl(
   return nullptr;
 }
 
-OrtStatus* ORT_API_CALL
-TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
-                           OrtKernelContext* kernel_context) noexcept {
+OrtStatus* ORT_API_CALL TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_,
+    void* compute_state, OrtKernelContext* kernel_context) noexcept {
   auto* info = FromOrt(this_);
   (void)compute_state;
 
@@ -74,8 +73,8 @@ TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
         info->ort_api->KernelContext_GetInput(kernel_context, 0, &input);
     if (s) return s;
     if (!input)
-      return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
-                                         "relu: missing input");
+      return info->ort_api->CreateStatus(
+          ORT_INVALID_ARGUMENT, "relu: missing input");
 
     OrtTensorTypeAndShapeInfo* si = nullptr;
     s = info->ort_api->GetTensorTypeAndShape(input, &si);
@@ -92,8 +91,8 @@ TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
     if (s) return s;
 
     OrtValue* output = nullptr;
-    s = info->ort_api->KernelContext_GetOutput(kernel_context, 0, shape.data(),
-                                               shape.size(), &output);
+    s = info->ort_api->KernelContext_GetOutput(
+        kernel_context, 0, shape.data(), shape.size(), &output);
     if (s) return s;
 
     const void* in_raw = nullptr;
@@ -127,8 +126,8 @@ TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
       info->ort_api->KernelContext_GetInput(kernel_context, b_idx, &input_B);
   if (status) return status;
   if (!input_A || !input_B)
-    return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
-                                       "matmul: missing inputs");
+    return info->ort_api->CreateStatus(
+        ORT_INVALID_ARGUMENT, "matmul: missing inputs");
 
   // ---- read shapes (N-D aware) --------------------------------------------
   auto read_shape = [&](const OrtValue* t,
@@ -153,8 +152,8 @@ TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
   if (status) return status;
 
   if (shape_A.size() < 2 || shape_B.size() < 2)
-    return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
-                                       "matmul: inputs must be at least 2-D");
+    return info->ort_api->CreateStatus(
+        ORT_INVALID_ARGUMENT, "matmul: inputs must be at least 2-D");
 
   // Last two dims: [..., M, K_A] x [..., K_B, N]
   // For Gemm with transB: B is stored as [N, K], so K_B=shape_B[-1],
@@ -171,8 +170,8 @@ TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
   }
 
   if (K_A != K_B)
-    return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
-                                       "matmul: inner dimensions mismatch");
+    return info->ort_api->CreateStatus(
+        ORT_INVALID_ARGUMENT, "matmul: inner dimensions mismatch");
   const int64_t K = K_A;
 
   // Batch: product of all dims before the last 2 in A and B
@@ -182,8 +181,8 @@ TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
   for (size_t i = 0; i + 2 < shape_B.size(); ++i) batch_B *= shape_B[i];
 
   if (batch_B != 1 && batch_B != batch_A)
-    return info->ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
-                                       "matmul: incompatible batch dimensions");
+    return info->ort_api->CreateStatus(
+        ORT_INVALID_ARGUMENT, "matmul: incompatible batch dimensions");
 
   // ---- compute output shape and allocate ----------------------------------
   // Preserve all leading batch dims from A, append [M, N]
@@ -196,8 +195,8 @@ TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
       kernel_context, 0, out_shape.data(), out_shape.size(), &output);
   if (status) return status;
   if (!output)
-    return info->ort_api->CreateStatus(ORT_FAIL,
-                                       "matmul: failed to allocate output");
+    return info->ort_api->CreateStatus(
+        ORT_FAIL, "matmul: failed to allocate output");
 
   // ---- raw data pointers --------------------------------------------------
   const void* A_raw = nullptr;
@@ -349,7 +348,7 @@ TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
 
         SimObservations tile_obs{};
         run_slice(A_tile.data(), B_tile.data(), C_tile.data(), nullptr, total_M,
-                  K_t, N_t, tile_obs);
+            K_t, N_t, tile_obs);
 
         // Accumulate int32 partial sums (K-tiles)
         for (int64_t m = 0; m < total_M; ++m)
@@ -382,7 +381,7 @@ TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
     for (int64_t b = 0; b < batch_A; ++b) {
       SimObservations obs_b{};
       run_tiled(A_i8 + b * M * K, B_i8 + b * K * N, C_i32 + b * M * N, nullptr,
-                M, obs_b);
+          M, obs_b);
       obs.ticks_total += obs_b.ticks_total;
       obs.ticks_reset += obs_b.ticks_reset;
       obs.ticks_weight_load += obs_b.ticks_weight_load;

@@ -16,7 +16,7 @@
 class TinyXPUDriver {
  public:
   TinyXPUDriver(const ApiPtrs& apis, std::string op_type_str,
-                bool transB_flag = false, bool fused_relu_flag = false);
+      bool transB_flag = false, bool fused_relu_flag = false);
 
   OrtNodeComputeInfo* GetOrtComputeInfo() { return &compute_info_; }
 
@@ -33,16 +33,14 @@ class TinyXPUDriver {
   // externally.
 
  private:
-  static OrtStatus* ORT_API_CALL CreateStateImpl(
-      OrtNodeComputeInfo* this_, OrtNodeComputeContext* compute_context,
-      void** compute_state) noexcept;
+  static OrtStatus* ORT_API_CALL CreateStateImpl(OrtNodeComputeInfo* this_,
+      OrtNodeComputeContext* compute_context, void** compute_state) noexcept;
 
-  static OrtStatus* ORT_API_CALL
-  ComputeImpl(OrtNodeComputeInfo* this_, void* compute_state,
-              OrtKernelContext* kernel_context) noexcept;
+  static OrtStatus* ORT_API_CALL ComputeImpl(OrtNodeComputeInfo* this_,
+      void* compute_state, OrtKernelContext* kernel_context) noexcept;
 
-  static void ORT_API_CALL ReleaseStateImpl(OrtNodeComputeInfo* this_,
-                                            void* compute_state) noexcept;
+  static void ORT_API_CALL ReleaseStateImpl(
+      OrtNodeComputeInfo* this_, void* compute_state) noexcept;
 
   OrtNodeComputeInfo compute_info_;  // The actual OrtNodeComputeInfo struct
 };

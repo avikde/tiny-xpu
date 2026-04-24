@@ -30,16 +30,16 @@ static ApiPtrs g_apis;
 
 extern "C" {
 
-EXPORT_SYMBOL OrtStatus* ORT_API_CALL
-CreateEpFactories(const char* registration_name, const OrtApiBase* ort_api_base,
-                  const OrtLogger* default_logger, OrtEpFactory** factories,
-                  size_t max_factories, size_t* num_factories) noexcept {
+EXPORT_SYMBOL OrtStatus* ORT_API_CALL CreateEpFactories(
+    const char* registration_name, const OrtApiBase* ort_api_base,
+    const OrtLogger* default_logger, OrtEpFactory** factories,
+    size_t max_factories, size_t* num_factories) noexcept {
   // Initialize global API pointers
   g_apis.Init(ort_api_base, default_logger);
 
   if (max_factories < 1) {
-    return g_apis.ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
-                                        "Need space for at least 1 factory");
+    return g_apis.ort_api->CreateStatus(
+        ORT_INVALID_ARGUMENT, "Need space for at least 1 factory");
   }
 
   // Create our factory
@@ -50,8 +50,8 @@ CreateEpFactories(const char* registration_name, const OrtApiBase* ort_api_base,
   return nullptr;  // Success
 }
 
-EXPORT_SYMBOL OrtStatus* ORT_API_CALL
-ReleaseEpFactory(OrtEpFactory* factory) noexcept {
+EXPORT_SYMBOL OrtStatus* ORT_API_CALL ReleaseEpFactory(
+    OrtEpFactory* factory) noexcept {
   auto* sample_factory = SampleEpFactory::FromOrt(factory);
   delete sample_factory;
   return nullptr;  // Success
@@ -107,25 +107,25 @@ SampleEpFactory::SampleEpFactory(const char* name, const ApiPtrs& apis)
 
 SampleEpFactory::~SampleEpFactory() = default;
 
-const char* ORT_API_CALL
-SampleEpFactory::GetNameImpl(const OrtEpFactory* this_) noexcept {
+const char* ORT_API_CALL SampleEpFactory::GetNameImpl(
+    const OrtEpFactory* this_) noexcept {
   return FromOrt(this_)->ep_name_.c_str();
 }
 
-const char* ORT_API_CALL
-SampleEpFactory::GetVendorImpl(const OrtEpFactory* this_) noexcept {
+const char* ORT_API_CALL SampleEpFactory::GetVendorImpl(
+    const OrtEpFactory* this_) noexcept {
   (void)this_;
   return "SampleVendor";
 }
 
-uint32_t ORT_API_CALL
-SampleEpFactory::GetVendorIdImpl(const OrtEpFactory* this_) noexcept {
+uint32_t ORT_API_CALL SampleEpFactory::GetVendorIdImpl(
+    const OrtEpFactory* this_) noexcept {
   (void)this_;
   return 0x1234;  // Sample vendor ID
 }
 
-const char* ORT_API_CALL
-SampleEpFactory::GetVersionImpl(const OrtEpFactory* this_) noexcept {
+const char* ORT_API_CALL SampleEpFactory::GetVersionImpl(
+    const OrtEpFactory* this_) noexcept {
   (void)this_;
   return "1.0.0";
 }
@@ -151,9 +151,9 @@ OrtStatus* ORT_API_CALL SampleEpFactory::GetSupportedDevicesImpl(
     if (device_type == OrtHardwareDeviceType_CPU) {
       OrtEpDevice* ep_device = nullptr;
       OrtStatus* status = apis.ep_api->CreateEpDevice(this_, hw_device,
-                                                      nullptr,  // ep_metadata
-                                                      nullptr,  // ep_options
-                                                      &ep_device);
+          nullptr,  // ep_metadata
+          nullptr,  // ep_options
+          &ep_device);
 
       if (status != nullptr) {
         return status;
@@ -167,8 +167,8 @@ OrtStatus* ORT_API_CALL SampleEpFactory::GetSupportedDevicesImpl(
   return nullptr;  // Success
 }
 
-OrtStatus* ORT_API_CALL SampleEpFactory::CreateEpImpl(
-    OrtEpFactory* this_, const OrtHardwareDevice* const* devices,
+OrtStatus* ORT_API_CALL SampleEpFactory::CreateEpImpl(OrtEpFactory* this_,
+    const OrtHardwareDevice* const* devices,
     const OrtKeyValuePairs* const* ep_metadata_pairs, size_t num_devices,
     const OrtSessionOptions* session_options, const OrtLogger* logger,
     OrtEp** ep) noexcept {
@@ -184,17 +184,17 @@ OrtStatus* ORT_API_CALL SampleEpFactory::CreateEpImpl(
   return nullptr;
 }
 
-void ORT_API_CALL SampleEpFactory::ReleaseEpImpl(OrtEpFactory* this_,
-                                                 OrtEp* ep) noexcept {
+void ORT_API_CALL SampleEpFactory::ReleaseEpImpl(
+    OrtEpFactory* this_, OrtEp* ep) noexcept {
   (void)this_;
   auto* sample_ep = SampleEp::FromOrt(ep);
   delete sample_ep;
 }
 
 OrtStatus* ORT_API_CALL
-SampleEpFactory::ValidateCompiledModelCompatibilityInfoImpl(
-    OrtEpFactory* this_, const OrtHardwareDevice* const* devices,
-    size_t num_devices, const char* compatibility_info,
+SampleEpFactory::ValidateCompiledModelCompatibilityInfoImpl(OrtEpFactory* this_,
+    const OrtHardwareDevice* const* devices, size_t num_devices,
+    const char* compatibility_info,
     OrtCompiledModelCompatibility* model_compatibility) noexcept {
   (void)this_;
   (void)devices;
@@ -228,8 +228,8 @@ OrtStatus* ORT_API_CALL SampleEpFactory::CreateDataTransferImpl(
   return nullptr;
 }
 
-bool ORT_API_CALL
-SampleEpFactory::IsStreamAwareImpl(const OrtEpFactory* this_) noexcept {
+bool ORT_API_CALL SampleEpFactory::IsStreamAwareImpl(
+    const OrtEpFactory* this_) noexcept {
   (void)this_;
   return false;
 }
@@ -287,9 +287,8 @@ const char* ORT_API_CALL SampleEp::GetNameImpl(const OrtEp* this_) noexcept {
   return FromOrt(this_)->factory_->GetEpName().c_str();
 }
 
-OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(
-    OrtEp* this_, const OrtGraph* graph,
-    OrtEpGraphSupportInfo* graph_support_info) noexcept {
+OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(OrtEp* this_,
+    const OrtGraph* graph, OrtEpGraphSupportInfo* graph_support_info) noexcept {
   auto* ep = FromOrt(this_);
   const auto& apis = ep->GetApis();
 
@@ -322,7 +321,7 @@ OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(
       return status;
     }
     printf("  [TinyXPU EP] Node %zu: op_type=%s\n", i,
-           op_type ? op_type : "<unknown>");
+        op_type ? op_type : "<unknown>");
     fflush(stdout);
 
     const bool is_matmul_integer =
@@ -399,9 +398,9 @@ OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(
   return nullptr;  // Success
 }
 
-OrtStatus* ORT_API_CALL SampleEp::CompileImpl(
-    OrtEp* this_, const OrtGraph** graphs, const OrtNode** fused_nodes,
-    size_t count, OrtNodeComputeInfo** node_compute_infos,
+OrtStatus* ORT_API_CALL SampleEp::CompileImpl(OrtEp* this_,
+    const OrtGraph** graphs, const OrtNode** fused_nodes, size_t count,
+    OrtNodeComputeInfo** node_compute_infos,
     OrtNode** ep_context_nodes) noexcept {
   (void)graphs;
   (void)fused_nodes;
@@ -492,8 +491,8 @@ OrtStatus* ORT_API_CALL SampleEp::CompileImpl(
   return nullptr;  // Success
 }
 
-void ORT_API_CALL SampleEp::ReleaseNodeComputeInfosImpl(
-    OrtEp* this_, OrtNodeComputeInfo** node_compute_infos,
+void ORT_API_CALL SampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_,
+    OrtNodeComputeInfo** node_compute_infos,
     size_t num_node_compute_infos) noexcept {
   (void)this_;
 
@@ -510,9 +509,9 @@ OrtStatus* ORT_API_CALL SampleEp::GetPreferredDataLayoutImpl(
   return nullptr;
 }
 
-OrtStatus* ORT_API_CALL SampleEp::ShouldConvertDataLayoutForOpImpl(
-    OrtEp* this_, const char* domain, const char* op_type,
-    OrtEpDataLayout target_data_layout, int* should_convert) noexcept {
+OrtStatus* ORT_API_CALL SampleEp::ShouldConvertDataLayoutForOpImpl(OrtEp* this_,
+    const char* domain, const char* op_type, OrtEpDataLayout target_data_layout,
+    int* should_convert) noexcept {
   (void)this_;
   (void)domain;
   (void)op_type;
@@ -521,9 +520,9 @@ OrtStatus* ORT_API_CALL SampleEp::ShouldConvertDataLayoutForOpImpl(
   return nullptr;
 }
 
-OrtStatus* ORT_API_CALL SampleEp::SetDynamicOptionsImpl(
-    OrtEp* this_, const char* const* option_keys,
-    const char* const* option_values, size_t num_options) noexcept {
+OrtStatus* ORT_API_CALL SampleEp::SetDynamicOptionsImpl(OrtEp* this_,
+    const char* const* option_keys, const char* const* option_values,
+    size_t num_options) noexcept {
   (void)this_;
   (void)option_keys;
   (void)option_values;
@@ -538,27 +537,24 @@ OrtStatus* ORT_API_CALL SampleEp::OnRunStartImpl(
   return nullptr;
 }
 
-OrtStatus* ORT_API_CALL SampleEp::OnRunEndImpl(OrtEp* this_,
-                                               const OrtRunOptions* run_options,
-                                               bool sync_stream) noexcept {
+OrtStatus* ORT_API_CALL SampleEp::OnRunEndImpl(
+    OrtEp* this_, const OrtRunOptions* run_options, bool sync_stream) noexcept {
   (void)this_;
   (void)run_options;
   (void)sync_stream;
   return nullptr;
 }
 
-OrtStatus* ORT_API_CALL
-SampleEp::EpCreateAllocatorImpl(OrtEp* this_, const OrtMemoryInfo* memory_info,
-                                OrtAllocator** allocator) noexcept {
+OrtStatus* ORT_API_CALL SampleEp::EpCreateAllocatorImpl(OrtEp* this_,
+    const OrtMemoryInfo* memory_info, OrtAllocator** allocator) noexcept {
   (void)this_;
   (void)memory_info;
   *allocator = nullptr;  // Use default
   return nullptr;
 }
 
-OrtStatus* ORT_API_CALL SampleEp::EpCreateSyncStreamForDeviceImpl(
-    OrtEp* this_, const OrtMemoryDevice* memory_device,
-    OrtSyncStreamImpl** stream) noexcept {
+OrtStatus* ORT_API_CALL SampleEp::EpCreateSyncStreamForDeviceImpl(OrtEp* this_,
+    const OrtMemoryDevice* memory_device, OrtSyncStreamImpl** stream) noexcept {
   (void)this_;
   (void)memory_device;
   *stream = nullptr;
