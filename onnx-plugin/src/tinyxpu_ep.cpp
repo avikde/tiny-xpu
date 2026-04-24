@@ -354,8 +354,8 @@ OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(
 #ifdef TINYXPU_USE_VERILATOR
         const bool is_matmul_integer  = op_type && std::strcmp(op_type, "MatMulInteger") == 0;
         const bool is_qlinear_matmul  = op_type && std::strcmp(op_type, "QLinearMatMul") == 0;
-        const bool is_relu            = op_type && std::strcmp(op_type, "Relu") == 0;
-        const bool is_our_op = is_matmul_integer || is_qlinear_matmul || is_relu;
+        // const bool is_relu            = op_type && std::strcmp(op_type, "Relu") == 0;
+        const bool is_our_op = is_matmul_integer;// || is_qlinear_matmul || is_relu;
 #else
         const bool is_matmul_integer = false;
         const bool is_relu           = false;
@@ -448,8 +448,9 @@ OrtStatus* ORT_API_CALL SampleEp::CompileImpl(
     for (size_t i = 0; i < count; ++i) {
         // Read op type from the fused node
         const char* op_type_cstr = nullptr;
-        if (fused_nodes && fused_nodes[i])
+        if (fused_nodes && fused_nodes[i]) {
             apis.ort_api->Node_GetOperatorType(fused_nodes[i], &op_type_cstr);
+        }
         const std::string op_type_str = op_type_cstr ? op_type_cstr : "";
 
         // For Gemm: infer transB from B's stored shape vs output's N dimension.
@@ -504,13 +505,9 @@ OrtStatus* ORT_API_CALL SampleEp::CompileImpl(
         }
 
         auto* compute_info = new SampleNodeComputeInfo(apis, op_type_str, transB);
-
-        // ---- QLinearMatMul: mark for requantization --------------------------------
-        // Scale parameters (a_scale, b_scale, y_scale, y_zero_point) are constant
-        // ONNX initializers read at runtime in ComputeImpl via KernelContext_GetInput.
-        if (op_type_str == "QLinearMatMul") {
-            compute_info->has_requant = true;
-        }
+        // NOTE: QLinearMatMul had has_requant=true — removed since hardware no longer
+        // supports requantization. QLinearMatMul must be handled outside this EP or
+        // requant must be done in software after the array returns int32.
 
         node_compute_infos[i] = compute_info->GetOrtComputeInfo();
 
@@ -613,10 +610,10 @@ SampleNodeComputeInfo* SampleNodeComputeInfo::FromOrt(OrtNodeComputeInfo* ort_in
 }
 
 SampleNodeComputeInfo::SampleNodeComputeInfo(const ApiPtrs& apis, std::string op_type_str,
-                                             bool transB_flag, bool fused_relu_flag)
+                                             bool transB_flag, bool /* fused_relu_flag */)
     : ort_api(apis.ort_api), ep_api(apis.ep_api),
-      op_type(std::move(op_type_str)), transB(transB_flag), fused_relu(fused_relu_flag),
-      has_requant(false), requant_M0(0), requant_rshift(0), requant_zp(0) {
+      op_type(std::move(op_type_str)), transB(transB_flag) {
+    // NOTE: fused_relu, has_requant, requant_M0, requant_rshift, requant_zp, bias removed.
 
     // Zero-initialize the OrtNodeComputeInfo struct
     std::memset(&compute_info_, 0, sizeof(compute_info_));
@@ -778,40 +775,12 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     status = info->ort_api->GetTensorMutableData(output, &C_raw);
     if (status) return status;
 
-    // ---- QLinearMatMul: read scale/zp parameters at runtime --------------------
-    // Inputs: 1=a_scale (float), 4=b_scale (float), 6=y_scale (float), 7=y_zero_point (int8).
-    // These are constant ONNX initializers, so the values are stable across calls.
-    if (info->has_requant) {
-        auto read_f32 = [&](uint32_t idx, float& out) {
-            const OrtValue* v = nullptr;
-            if (!info->ort_api->KernelContext_GetInput(kernel_context, idx, &v) && v) {
-                const void* d = nullptr;
-                if (!info->ort_api->GetTensorData(v, &d) && d)
-                    out = *static_cast<const float*>(d);
-            }
-        };
-        auto read_i8 = [&](uint32_t idx, int8_t& out) {
-            const OrtValue* v = nullptr;
-            if (!info->ort_api->KernelContext_GetInput(kernel_context, idx, &v) && v) {
-                const void* d = nullptr;
-                if (!info->ort_api->GetTensorData(v, &d) && d)
-                    out = *static_cast<const int8_t*>(d);
-            }
-        };
-        float a_scale = 1.0f, b_scale = 1.0f, y_scale = 1.0f;
-        int8_t y_zp = 0;
-        read_f32(1, a_scale);
-        read_f32(4, b_scale);
-        read_f32(6, y_scale);
-        read_i8(7, y_zp);
-        if (y_scale > 0.0f) {
-            const double S = static_cast<double>(a_scale) * b_scale / y_scale;
-            info->requant_M0     = static_cast<uint32_t>(
-                std::min(S * (1LL << 31) + 0.5, static_cast<double>((1u << 31) - 1u)));
-            info->requant_rshift = 31;
-            info->requant_zp     = y_zp;
-        }
-    }
+    // ---- QLinearMatMul scale/zp reading removed -----------------------------------
+    // NOTE: has_requant is always false now (hardware doesn't support requantization).
+    // QLinearMatMul still reaches ComputeImpl but must be handled in software after
+    // the Verilator array returns int32 results, or handled outside this EP.
+    // TODO: QLinearMatMul should be rejected in GetCapabilityImpl or Compilem_impl
+    // so it falls through to a different EP.
 
 #ifdef TINYXPU_USE_VERILATOR
     // MatMulInteger: int8 inputs → int32 output via systolic array.
@@ -822,21 +791,20 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
     // HW_ROWS x HW_COLS blocks and accumulating partial sums.
     const int8_t* A_i8  = static_cast<const int8_t*>(A_raw);
     const int8_t* B_i8  = static_cast<const int8_t*>(B_raw);
-    const bool apply_relu   = info->fused_relu;
-    const bool apply_requant = info->has_requant;
-
-    // Output pointer type depends on whether requantization is active.
-    // QLinearMatMul → int8 output; MatMulInteger → int32 output.
-    int32_t* C_i32 = apply_requant ? nullptr : static_cast<int32_t*>(C_raw);
-    int8_t*  C_i8  = apply_requant ? static_cast<int8_t*>(C_raw)  : nullptr;
+    // NOTE: apply_relu, apply_requant, C_i8 removed — hardware only produces int32.
+    // QLinearMatMul and Relu must be handled in software or outside this EP.
+    int32_t* C_i32 = static_cast<int32_t*>(C_raw);
 
     // run_slice: drive the Verilator systolic array for one 2-D tile.
     // A_sl: [total_M, K_sl], B_sl: [K_sl, N_sl] (contiguous), C_sl: [total_M, N_sl].
     // K_sl <= HW_ROWS and N_sl <= HW_COLS must hold.
+    // NOTE: C_i8_sl parameter removed — hardware only produces int32 accumulator output.
+    // Requantization (if needed) must happen in software after the array returns.
     auto run_slice = [&](const int8_t* A_sl, const int8_t* B_sl,
-                         int32_t* C_sl, int8_t* C_i8_sl,
+                         int32_t* C_sl, int8_t* /* C_i8_sl */,
                          int64_t total_M, int64_t K_sl, int64_t N_sl,
                          SimObservations& obs) {
+        (void)C_sl;  // silence unused param warning
         obs.hw_rows = HW_ROWS; obs.hw_cols = HW_COLS;
 
         VerilatedContext ctx;
@@ -851,18 +819,12 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
 
         arr.clk = 0; arr.rst_n = 0;
         for (int c = 0; c < HW_COLS; ++c) arr.weight_ld[c] = 0;
-        arr.relu_en    = (apply_relu || apply_requant) ? 1 : 0;
-        arr.requant_en = apply_requant ? 1 : 0;
-        arr.M0         = apply_requant ? info->requant_M0     : 0;
-        arr.rshift     = apply_requant ? info->requant_rshift : 0;
-        arr.zero_pt    = apply_requant ? static_cast<uint8_t>(info->requant_zp) : 0;
-        // Load per-column bias (zero if not set)
-        for (int c = 0; c < HW_COLS; ++c) {
-            arr.bias_in[c] = (apply_requant && c < static_cast<int>(info->bias.size()))
-                             ? static_cast<uint32_t>(info->bias[c]) : 0u;
-        }
-        for (int k = 0; k < HW_ROWS; ++k) arr.data_in[k] = 0;
-        for (int c = 0; c < HW_COLS; ++c) arr.weight_in_top[c] = 0;
+        // TODO: bias_in removed — array loads weights directly from acc_in_top.
+        // Load per-column bias via acc_in_top before weight_ld if needed.
+        for (int k = 0; k < HW_ROWS; ++k) arr.data_in_left[k] = 0;
+        // TODO: acc_in_top renamed — array.sv uses acc_in_top[COLS] as weight
+        // input when weight_ld[c]=1. Weights flow through the accumulator cascade.
+        for (int c = 0; c < HW_COLS; ++c) arr.acc_in_top[c] = 0;
         arr.eval();
         for (int i = 0; i < 3; ++i) { tick(); obs.ticks_reset++; }
         arr.rst_n = 1;
@@ -872,7 +834,8 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
         for (int load_row = 0; load_row < HW_ROWS; ++load_row) {
             for (int c = 0; c < HW_COLS; ++c) {
                 int8_t w = (load_row < K_sl && c < N_sl) ? B_sl[load_row * N_sl + c] : 0;
-                arr.weight_in_top[c] = static_cast<int8_t>(w);
+                // Weights loaded through acc_in_top; pe.sv extracts weight_r from acc_in on weight_ld.
+                arr.acc_in_top[c] = static_cast<int8_t>(w);
                 if (load_row < K_sl && c < N_sl) obs.weight_writes++;
             }
             tick(); obs.ticks_weight_load++;
@@ -888,24 +851,20 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
                 const int64_t src_row = t - r;
                 if (src_row >= 0 && src_row < total_M && r < K_sl) {
                     int8_t a = A_sl[src_row * K_sl + r];
-                    arr.data_in[r] = static_cast<uint8_t>(a);
+                    arr.data_in_left[r] = static_cast<uint8_t>(a);
                     obs.activation_writes++;
                 } else {
-                    arr.data_in[r] = 0;
+                    arr.data_in_left[r] = 0;
                 }
             }
             tick(); obs.ticks_streaming++;
 
+            // NOTE: acc_out_bottom replaced acc_out; q_out removed (no requant in hardware).
             for (int j = 0; j < N_sl; ++j) {
                 const int64_t out_row = t - (HW_ROWS + j - 1);
                 if (out_row >= 0 && out_row < total_M) {
-                    C_sl[out_row * N_sl + j] = static_cast<int32_t>(arr.acc_out[j]);
+                    C_sl[out_row * N_sl + j] = static_cast<int32_t>(arr.acc_out_bottom[j]);
                     obs.output_reads++;
-                }
-                // When requant is active, also capture the int8 output.
-                if (apply_requant && C_i8_sl && out_row >= 0 && out_row < total_M) {
-                    C_i8_sl[out_row * N_sl + j] = static_cast<int8_t>(
-                        static_cast<int8_t>(arr.q_out[j]));
                 }
             }
         }
@@ -913,15 +872,12 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
 
     // run_tiled: tile [total_M, K] x [K, N] into HW_ROWS x HW_COLS blocks.
     // Tiles along K are summed into the int32 output; tiles along N are independent.
-    // When apply_requant is true the int8 output is written to C_i8 directly from
-    // the hardware q_out ports (requantization happens inside the array).  In this
-    // case K must fit within one tile (K <= HW_ROWS) so that requantization fires
-    // on the fully-accumulated sums — enforced by a runtime assert below.
+    // NOTE: C_i8_base parameter removed — hardware only produces int32. Requantization
+    // (if needed for QLinearMatMul) must happen in software after the array returns.
     auto run_tiled = [&](const int8_t* A_base, const int8_t* B_base,
-                         int32_t* C_base, int8_t* C_i8_base,
+                         int32_t* C_base, int8_t* /* C_i8_base */,
                          int64_t total_M, SimObservations& obs) {
-        if (!apply_requant)
-            std::fill(C_base, C_base + total_M * N, 0);
+        std::fill(C_base, C_base + total_M * N, 0);
 
         for (int64_t k0 = 0; k0 < K; k0 += HW_ROWS) {
             const int64_t K_t = std::min((int64_t)HW_ROWS, K - k0);
@@ -940,27 +896,19 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
                     for (int64_t n = 0; n < N_t; ++n)
                         B_tile[k * N_t + n] = B_base[(k0 + k) * N + n0 + n];
 
-                // Temporary int32 tile and optional int8 tile
+                // Temporary int32 tile (accumulates partial sums across K tiles)
                 std::vector<int32_t> C_tile(total_M * N_t, 0);
-                std::vector<int8_t>  C_i8_tile(apply_requant ? total_M * N_t : 0, 0);
 
                 SimObservations tile_obs{};
+                // NOTE: C_i8_tile removed — hardware only produces int32.
                 run_slice(A_tile.data(), B_tile.data(),
-                          C_tile.data(),
-                          apply_requant ? C_i8_tile.data() : nullptr,
+                          C_tile.data(), nullptr,
                           total_M, K_t, N_t, tile_obs);
 
-                if (apply_requant) {
-                    // Write int8 results to the N-tile's columns in C_i8_base
-                    for (int64_t m = 0; m < total_M; ++m)
-                        for (int64_t n = 0; n < N_t; ++n)
-                            C_i8_base[m * N + n0 + n] = C_i8_tile[m * N_t + n];
-                } else {
-                    // Accumulate int32 partial sums (K-tiles)
-                    for (int64_t m = 0; m < total_M; ++m)
-                        for (int64_t n = 0; n < N_t; ++n)
-                            C_base[m * N + n0 + n] += C_tile[m * N_t + n];
-                }
+                // Accumulate int32 partial sums (K-tiles)
+                for (int64_t m = 0; m < total_M; ++m)
+                    for (int64_t n = 0; n < N_t; ++n)
+                        C_base[m * N + n0 + n] += C_tile[m * N_t + n];
 
                 obs.ticks_total       += tile_obs.ticks_total;
                 obs.ticks_reset       += tile_obs.ticks_reset;
@@ -979,14 +927,13 @@ OrtStatus* ORT_API_CALL SampleNodeComputeInfo::ComputeImpl(
 
     if (batch_B == 1) {
         // Common case: shared weights. Flatten batch_A into M.
-        run_tiled(A_i8, B_i8, C_i32, C_i8, batch_A * M, obs);
+        run_tiled(A_i8, B_i8, C_i32, nullptr, batch_A * M, obs);
     } else {
         // Batched weights: run one tiled pass per batch.
         for (int64_t b = 0; b < batch_A; ++b) {
             SimObservations obs_b{};
             run_tiled(A_i8 + b * M * K, B_i8 + b * K * N,
-                      C_i32 ? C_i32 + b * M * N : nullptr,
-                      C_i8  ? C_i8  + b * M * N : nullptr,
+                      C_i32 + b * M * N, nullptr,
                       M, obs_b);
             obs.ticks_total       += obs_b.ticks_total;
             obs.ticks_reset       += obs_b.ticks_reset;

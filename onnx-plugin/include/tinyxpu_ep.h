@@ -8,8 +8,6 @@
 #include <onnxruntime_c_api.h>
 
 #include <string>
-#include <vector>
-#include <memory>
 
 // Forward declarations
 class SampleEpFactory;
@@ -199,17 +197,12 @@ public:
 
     const OrtApi* ort_api;
     const OrtEpApi* ep_api;
-    std::string op_type;   // "MatMulInteger", "QLinearMatMul", "MatMul", "Gemm", or "Relu"
+    // TODO: op_type should be narrowed to only MatMulInteger / MatMul / Gemm.
+    // QLinearMatMul and Relu are no longer supported by this EP.
+    std::string op_type;   // "MatMulInteger", "MatMul", "Gemm"
     bool transB;           // Gemm only: inferred from B's shape in CompileImpl
-    bool fused_relu;       // MatMulInteger: drive relu_en=1 on the array output
-
-    // QLinearMatMul requantization parameters (extracted from constant graph inputs
-    // during CompileImpl; zero/empty for all other op types).
-    bool                 has_requant  = false;
-    uint32_t             requant_M0   = 0;   // fixed-point multiplier (≤ 2^31-1)
-    uint8_t              requant_rshift = 0; // right-shift (typically 31)
-    int8_t               requant_zp   = 0;   // output zero-point
-    std::vector<int32_t> bias;               // per-column int32 bias (size N, may be empty)
+    // NOTE: fused_relu, has_requant, requant_* fields removed — hardware no longer
+    // supports ReLU or requantization. QLinearMatMul must be handled externally.
 
 private:
     static OrtStatus* ORT_API_CALL CreateStateImpl(

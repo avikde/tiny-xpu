@@ -79,6 +79,7 @@ if(SIM)
     verilate(tinyxpu_ep
         SOURCES
             ${CMAKE_SOURCE_DIR}/src/pe.sv
+            ${CMAKE_SOURCE_DIR}/src/pe_col.sv
             ${CMAKE_SOURCE_DIR}/src/requant.sv
             ${CMAKE_SOURCE_DIR}/src/array.sv
         TOP_MODULE  array
