@@ -61,6 +61,40 @@ OrtStatus* ORT_API_CALL TinyXPUDriver::CreateStateImpl(
   return nullptr;
 }
 
+#ifdef TINYXPU_USE_VERILATOR
+static void verilatorTick(Varray& arr, SimObservations &obs) {
+  arr.clk = 1;
+  arr.eval();
+  arr.clk = 0;
+  arr.eval();
+  obs.ticks_total++;
+};
+
+/// NOTE: This does not do any pipelining with the MACs since it is a test.
+static void loadWeights(
+    Varray& arr, SimObservations& obs, const int8_t* W, int K, int N) {
+  // Enable weight_ld on the columns we need
+  for (int c = 0; c < N; ++c) arr.weight_ld[c] = 1;
+
+  // Weights loaded reversed W[K-1-load_row, c]
+  for (int load_row = 0; load_row < K; ++load_row) {
+    for (int c = 0; c < N; ++c) {
+      int8_t w = W[(K - 1 - load_row) * N + c];
+      // Weights loaded through acc_in_top; pe.sv extracts weight_r from
+      // acc_in on weight_ld.
+      arr.acc_in_top[c] = static_cast<int8_t>(w);
+      obs.weight_writes++;
+    }
+    verilatorTick(arr, obs);
+    obs.ticks_weight_load++;
+  }
+
+  // Reset weight_ld
+  for (int c = 0; c < N; ++c) arr.weight_ld[c] = 0;
+  // Can accept new inputs before the next clock cycle, so do not tick()
+}
+#endif
+
 OrtStatus* ORT_API_CALL TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_,
     void* compute_state, OrtKernelContext* kernel_context) noexcept {
   auto* info = FromOrt(this_);
@@ -246,14 +280,6 @@ OrtStatus* ORT_API_CALL TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_,
       ~Guard() { a.final(); }
     } guard{arr};
 
-    auto tick = [&]() {
-      obs.ticks_total++;
-      arr.clk = 1;
-      arr.eval();
-      arr.clk = 0;
-      arr.eval();
-    };
-
     arr.clk = 0;
     arr.rst_n = 0;
     // Initialization
@@ -264,27 +290,12 @@ OrtStatus* ORT_API_CALL TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_,
     for (int c = 0; c < HW_COLS; ++c) arr.acc_in_top[c] = 0;
     arr.eval();
 
-    tick();
+    verilatorTick(arr, obs);
     obs.ticks_reset++;
     arr.rst_n = 1;
-    tick();
+    verilatorTick(arr, obs);
 
-    for (int c = 0; c < HW_COLS; ++c) arr.weight_ld[c] = 1;
-    for (int load_row = 0; load_row < HW_ROWS; ++load_row) {
-      for (int c = 0; c < HW_COLS; ++c) {
-        int8_t w =
-            (load_row < K_sl && c < N_sl) ? B_sl[load_row * N_sl + c] : 0;
-        // Weights loaded through acc_in_top; pe.sv extracts weight_r from
-        // acc_in on weight_ld.
-        arr.acc_in_top[c] = static_cast<int8_t>(w);
-        if (load_row < K_sl && c < N_sl) obs.weight_writes++;
-      }
-      tick();
-      obs.ticks_weight_load++;
-    }
-    for (int c = 0; c < HW_COLS; ++c) arr.weight_ld[c] = 0;
-    tick();
-    obs.ticks_weight_load++;
+    loadWeights(arr, obs, B_sl, K_sl, N_sl);
 
     const int64_t total_ticks = total_M + HW_ROWS + N_sl - 2;
     for (int64_t t = 0; t < total_ticks; ++t) {
@@ -300,7 +311,7 @@ OrtStatus* ORT_API_CALL TinyXPUDriver::ComputeImpl(OrtNodeComputeInfo* this_,
           arr.data_in_left[r] = 0;
         }
       }
-      tick();
+      verilatorTick(arr, obs);
       obs.ticks_streaming++;
 
       // NOTE: acc_out_bottom replaced acc_out; q_out removed (no requant in
