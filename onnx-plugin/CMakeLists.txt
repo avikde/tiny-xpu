@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.18)
 project(sample_onnx_ep VERSION 1.0.0 LANGUAGES CXX)
 
 option(SIM "Link Verilator-compiled SV into the ONNX EP (enables TINYXPU_USE_VERILATOR)" OFF)
-option(BUILD_TEST_APP "Build the test application" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -102,35 +101,6 @@ if(SIM)
     )
 
     message(STATUS "SIM=ON: Verilator ${verilator_VERSION}, array ${SIM_ROWS}x${SIM_COLS}")
-endif()
-
-# ============================================================================
-# Build a Test Application (optional)
-# ============================================================================
-
-if(BUILD_TEST_APP AND ONNXRUNTIME_LIB_DIR)
-    add_executable(test_tinyxpu_ep
-        test/test_tinyxpu_ep.cpp
-    )
-
-    target_include_directories(test_tinyxpu_ep PRIVATE
-        ${ONNXRUNTIME_INCLUDE_DIR}
-    )
-
-    target_link_directories(test_tinyxpu_ep PRIVATE
-        ${ONNXRUNTIME_LIB_DIR}
-    )
-
-    target_link_libraries(test_tinyxpu_ep PRIVATE
-        onnxruntime
-    )
-
-    # Copy the plugin library next to the test executable for easy testing
-    add_custom_command(TARGET test_tinyxpu_ep POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-            $<TARGET_FILE:tinyxpu_ep>
-            $<TARGET_FILE_DIR:test_tinyxpu_ep>
-    )
 endif()
 
 # ============================================================================
