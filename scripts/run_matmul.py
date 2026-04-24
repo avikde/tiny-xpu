@@ -27,7 +27,7 @@ def main() -> int:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.join(script_dir, "..")
 
-    model_path = os.path.join(script_dir, "matmul_integer_16x16.onnx")
+    model_path = os.path.join(script_dir, "matmul_integer_8x8.onnx")
     plugin_dir = os.path.join(repo_root, "build", "onnx-plugin")
     if sys.platform == "darwin":
         default_plugin = os.path.join(plugin_dir, "libtinyxpu_ep.dylib")
@@ -105,11 +105,12 @@ def main() -> int:
     ).astype(np.int32)
 
     rng = np.random.default_rng(42)
-    A = rng.integers(-64, 64, size=(512, 16), dtype=np.int8)
+    M = 512
+    A = rng.integers(-64, 64, size=(M, W_ref.shape[1]), dtype=np.int8)
 
     expected = A.astype(np.int32) @ W_ref
 
-    print(f"Input A (int8): shape {A.shape},  first row: {A[0]}")
+    print(f"Input A (int8): shape {A.shape},  first 4 rows:\n{A[:4]}")
     print(f"Weight W (int8, loaded from model):\n{W_ref.astype(np.int8)}")
     print()
 
@@ -120,9 +121,9 @@ def main() -> int:
     tinyxpu_perf.print_perf(perf)
     print()
 
-    Y = result[0]
-    print(f"Output Y = A @ W (int32): shape {Y.shape},  first row: {Y[0]}")
-    print(f"Expected (NumPy reference):           first row: {expected[0]}")
+    Y = np.asarray(result[0])
+    print(f"Output Y = A @ W (int32): shape {Y.shape},  first 4 rows:\n{Y[:4]}")
+    print(f"Expected (NumPy reference):           first 4 rows:\n{expected[:4]}")
     print()
 
     # =========================================================================
@@ -151,7 +152,7 @@ def main() -> int:
     M_values = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
     peak_macs = None
     for m in M_values:
-        A_m = rng.integers(-64, 64, size=(m, 16), dtype=np.int8)
+        A_m = rng.integers(-64, 64, size=(m, W_ref.shape[1]), dtype=np.int8)
         session.run(None, {"X": A_m})
         p = tinyxpu_perf.get_last_perf(lib)
         o = p.obs

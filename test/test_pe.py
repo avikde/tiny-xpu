@@ -10,10 +10,8 @@ from cocotb.triggers import RisingEdge, ClockCycles
 async def reset_dut(dut):
     """Apply active-low reset for a few cycles."""
     dut.rst_n.value = 0
-    dut.en.value = 0
     dut.weight_ld.value = 0
     dut.data_in.value = 0
-    dut.weight_in.value = 0
     dut.acc_in.value = 0
     await ClockCycles(dut.clk, 3)
     dut.rst_n.value = 1
@@ -34,24 +32,21 @@ async def test_reset(dut):
 
 @cocotb.test()
 async def test_weight_load(dut):
-    """Loading a weight should latch the value."""
+    """Loading a weight via acc_in (weight_ld=1) should latch the value."""
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
     await reset_dut(dut)
 
-    dut.weight_in.value = 5
+    # Load weight = 5: weight_ld=1, acc_in carries the weight
+    dut.acc_in.value = 5
     dut.weight_ld.value = 1
     await RisingEdge(dut.clk)
     dut.weight_ld.value = 0
-    await RisingEdge(dut.clk)
 
-    # Enable a MAC cycle: 5 * 3 + 0 = 15
+    # MAC: 5 * 3 + 0 = 15 (acc_in is bias; 0 here)
     dut.data_in.value = 3
     dut.acc_in.value = 0
-    dut.en.value = 1
-
-    # NOTE: this edge does the computation, but cocotb timing nuance requires another cycle for the output to be available.
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)  # output registered
 
@@ -62,22 +57,21 @@ async def test_weight_load(dut):
 
 @cocotb.test()
 async def test_mac_accumulate(dut):
-    """Verify multiply-accumulate with a non-zero partial sum input."""
+    """Verify multiply-accumulate with a non-zero bias input."""
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
     await reset_dut(dut)
 
     # Load weight = 4
-    dut.weight_in.value = 4
+    dut.acc_in.value = 4
     dut.weight_ld.value = 1
     await RisingEdge(dut.clk)
     dut.weight_ld.value = 0
 
-    # MAC: 4 * 7 + 10 = 38
+    # MAC: 4 * 7 + 10 = 38 (acc_in=10 is the bias)
     dut.data_in.value = 7
     dut.acc_in.value = 10
-    dut.en.value = 1
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
 
@@ -88,14 +82,13 @@ async def test_mac_accumulate(dut):
 
 @cocotb.test()
 async def test_data_passthrough(dut):
-    """data_in should be forwarded to data_out when enabled."""
+    """data_in should be forwarded to data_out (no weight loaded)."""
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
     await reset_dut(dut)
 
     dut.data_in.value = 42
-    dut.en.value = 1
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
 
@@ -105,35 +98,44 @@ async def test_data_passthrough(dut):
 
 
 @cocotb.test()
-async def test_enable_gating(dut):
-    """When en=0, outputs should hold their previous values."""
+async def test_weight_load_sequence(dut):
+    """Sequential weight loading over two cycles updates weight_r each cycle."""
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
     await reset_dut(dut)
 
-    # Do one enabled cycle
-    dut.weight_in.value = 2
+    # Cycle 1: load w1
+    dut.acc_in.value = 11
     dut.weight_ld.value = 1
+    await RisingEdge(dut.clk)
+
+    # Cycle 2: load w0
+    dut.acc_in.value = 22
     await RisingEdge(dut.clk)
     dut.weight_ld.value = 0
 
-    dut.data_in.value = 3
-    dut.acc_in.value = 0
-    dut.en.value = 1
+    # acc_out is registered, so w1 appears after cycle 2's edge and w0 after cycle 3's.
+    await RisingEdge(dut.clk)
+
+    # After cycle 3's edge, acc_out holds w0 (forwarded from cycle 2)
+    assert dut.acc_out.value.to_signed() == 22, (
+        f"Expected acc_out=22, got {dut.acc_out.value.to_signed()}"
+    )
+
+    # weight_r latched w0 on cycle 2
+    assert dut.weight_r.value.to_signed() == 22, (
+        f"Expected weight_r=22, got {dut.weight_r.value.to_signed()}"
+    )
+
+    # MAC: 22 * 2 + 5 = 49
+    dut.data_in.value = 2
+    dut.acc_in.value = 5
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
 
-    prev_acc = dut.acc_out.value.to_signed()
-
-    # Disable and change inputs — output should not change
-    dut.en.value = 0
-    dut.data_in.value = 99
-    dut.acc_in.value = 99
-    await ClockCycles(dut.clk, 3)
-
-    assert dut.acc_out.value.to_signed() == prev_acc, (
-        "acc_out changed while en=0"
+    assert dut.acc_out.value.to_signed() == 49, (
+        f"Expected acc_out=49, got {dut.acc_out.value.to_signed()}"
     )
 
 

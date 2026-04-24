@@ -1,0 +1,5 @@
+# .clang-format
+BasedOnStyle: Google
+IndentWidth: 2
+Language: Cpp
+AlignAfterOpenBracket: DontAlign

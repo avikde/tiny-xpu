@@ -9,28 +9,23 @@ module pe #(
 ) (
     input  logic                    clk,
     input  logic                    rst_n,
-    input  logic                    en,
+    // Per-column global weight load signal
+    input  logic                    weight_ld,
 
-    // Data flowing through the systolic array
+    // From the left
     input  logic signed [DATA_WIDTH-1:0] data_in,
+    // To the right
     output logic signed [DATA_WIDTH-1:0] data_out,
 
-    // Weight (stationary)
-    input  logic signed [DATA_WIDTH-1:0] weight_in,
-    // control signal "weight load"
-    // When high, the PE latches weight_in into its internal weight_r register.
-    input  logic                         weight_ld,
-
-    // Partial sum cascade
+    // Partial sum cascade (carries weights when weight_ld=1, bias/partial sums when weight_ld=0)
     input  logic signed [ACC_WIDTH-1:0]  acc_in,
     output logic signed [ACC_WIDTH-1:0]  acc_out
 );
 
-    // weight_r is signed [7:0], an 8-bit signed value (range -128 to +127, i.e. int8)
+    // Register for weight storage (loaded from acc_in on weight_ld)
     logic signed [DATA_WIDTH-1:0] weight_r;
-    // data_in is signed [7:0] 
     logic signed [ACC_WIDTH-1:0]  mult_result;
-    // The result is assigned to mult_result which is signed [31:0]
+
     assign mult_result = weight_r * data_in;
 
     always_ff @(posedge clk or negedge rst_n) begin
@@ -38,14 +33,15 @@ module pe #(
             weight_r <= '0;
             data_out <= '0;
             acc_out  <= '0;
+        end else if (weight_ld) begin
+            // Load weight from acc_in and cascade it south
+            weight_r <= acc_in[DATA_WIDTH-1:0];
+            acc_out  <= {{(ACC_WIDTH-DATA_WIDTH){acc_in[DATA_WIDTH-1]}},
+                         acc_in[DATA_WIDTH-1:0]};
+            data_out <= '0;
         end else begin
-            if (weight_ld)
-                weight_r <= weight_in;
-
-            if (en) begin
-                data_out <= data_in;
-                acc_out  <= acc_in + mult_result;
-            end
+            data_out <= data_in;
+            acc_out  <= acc_in + mult_result;
         end
     end
 

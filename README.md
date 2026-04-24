@@ -73,7 +73,7 @@ A `ROWS × COLS` PE grid. Dataflow is **weight-stationary**: weights load once, 
 
 **Ports of `array.sv`:**
 - `data_in[ROWS]` — one int8 activation per row per cycle (internally skewed)
-- `weight_in[ROWS*COLS]`, `weight_ld` — load all weights in one cycle
+- `weight_in_top[COLS]`, `weight_ld[COLS]` — load weights via systolic cascade (weight_ld=1 for ROWS cycles)
 - `acc_out[COLS]` — raw int32 result per column (no de-skew)
 - `q_out[COLS]` — int8 requantized output (valid when `requant_en=1`)
 
@@ -83,8 +83,8 @@ A `ROWS × COLS` PE grid. Dataflow is **weight-stationary**: weights load once, 
 
 ```
          weight_ld
-             │  en
-             ▼  ▼
+             │
+             ▼
           ┌──────────┐
           │    PE    ├──► data_out
           │  weight  │
@@ -93,11 +93,6 @@ data_in──►│  (reg)   │
 acc_in ──►│          ├──► acc_out
           └──────────┘
 ```
-TO FIX:
-
-- Phase 1 (`weight_ld=1, en=0`): latch weight into PE register
-- Phase 2 (`weight_ld=0, en=1`): stream activations, accumulate partial sums
-- `int8 × int8 → int32`, then `int32 + int32 → int32`
 
 TO FIX:
 
@@ -124,19 +119,22 @@ In [TPU-like](https://arxiv.org/pdf/1704.04760) architectures, weight loading is
 
 > About 35% of cycles are spent waiting for weights to load from memory into the matrix unit, which occurs during the 4 fully connected layers that run at an operational intensity of just 32
 
-The time for a `(M,K) × (K,N)` product is `M+R+N` cycles (`R` cycles to fill the pipeline, `M` cycles of compute, `N` cycles to drain). With separate-phase weight loading, you must drain the pipeline and reload: tile-to-tile **latency is `M+K+R+N** cycles.
+The time for a `(M,K) × (K,N)` product is `M+R+N` cycles (`R` cycles to fill the pipeline, `M` cycles of compute, `N` cycles to drain). With separate-phase weight loading, you must drain the pipeline and reload: tile-to-tile **latency is `M+K+R+N`** cycles.
 
-#### 1. Pipelined tagged weight loading
+#### 1. Pipelined sequential weight loading
 
-**Idea:** Tag weight values so PEs distinguish them from data (bias/partial sums). A tagged weight entering from the top triggers a load-and-forward chain that fills the column while computation tails out.
+**Idea:** Add a per-column `weight_ld` global signal, so that PEs distinguish the weight from data (bias/partial sums). When `weight_ld=1`, a weight entering from the top on `acc_in` triggers a load-and-forward chain that fills the column while computation tails out.
 
 **PE behavior:**
-- **Tagged input**: Latch as new weight, reset accumulator to 0, pass tagged weight down immediately
-- **Untagged input**: Add to accumulator (first untagged is bias, subsequent are partial sums)
+- `weight_ld=1`: Latch `acc_in` as new weight, set `acc_out` to the weight without accumulation, set `data_out=0`
+- `weight_ld=0`: Add to accumulator (first untagged is bias, subsequent are partial sums)
+
+**Example:** We have PE0 (top) connected to PE1 (bottom), and we set `weight_ld=1`, feed in from the top `{w1, w0}` over 2 cycles and then reset `weight_ld`. In cycle:
+1. PE0 sets its weight to `w1`, and sets its acc_out (= PE1's acc_in) = `w1`
+2. PE1 sets its weight to `w1`. PE0 sets its weight to `w0`
+3. Since `weight_ld=0`, the weights are now frozen in the PEs and MAC can begin
 
 For the matrix product, it takes `M+K` cycles from the first input entry to the start of weight loading for the next product. The next product can start immediately after the first new weight column is loaded over `K` cycles. Therefore, the tile-to-tile **latency is `M+2K` cycles**.
-
-**Hardware tradeoff:** Extra bit on each north-south connection for the tag.
 
 #### 2. Double-buffered weights
 
