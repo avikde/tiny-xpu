@@ -10,3 +10,4 @@ scripts/*.onnx
 .cache
 scripts/*.png
 .DS_Store
+__cmake_systeminformation

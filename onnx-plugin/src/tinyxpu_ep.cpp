@@ -334,80 +334,71 @@ OrtStatus* ORT_API_CALL SampleEp::GetCapabilityImpl(
         if (status != nullptr) {
             return status;
         }
+        printf("  [TinyXPU EP] Node %zu: op_type=%s\n", i, op_type ? op_type : "<unknown>");
+        fflush(stdout);
 
-#ifdef TINYXPU_USE_VERILATOR
         const bool is_matmul_integer  = op_type && std::strcmp(op_type, "MatMulInteger") == 0;
         const bool is_qlinear_matmul  = op_type && std::strcmp(op_type, "QLinearMatMul") == 0;
         // const bool is_relu            = op_type && std::strcmp(op_type, "Relu") == 0;
         const bool is_our_op = is_matmul_integer;// || is_qlinear_matmul || is_relu;
-#else
-        const bool is_matmul_integer = false;
-        const bool is_relu           = false;
-        const bool is_our_op = op_type &&
-            (std::strcmp(op_type, "MatMul") == 0 || std::strcmp(op_type, "Gemm") == 0);
-#endif
-        if (is_our_op) {
-#ifdef TINYXPU_USE_VERILATOR
-            if (is_matmul_integer) {
-                // Claim MatMulInteger nodes if the weight (input[1]) is statically
-                // known to be int8, OR if the weight type is unknown (dynamic
-                // quantization graphs compute the activation type at runtime via
-                // DynamicQuantizeLinear, so input[0] has no static type info).
-                // We verify the actual element types in ComputeImpl.
-                bool inputs_ok = false;
-                {
-                    size_t ni = 0;
-                    if (!apis.ort_api->Node_GetNumInputs(node, &ni) && ni >= 2) {
-                        std::vector<const OrtValueInfo*> vi(ni, nullptr);
-                        if (!apis.ort_api->Node_GetInputs(node, vi.data(), ni)) {
-                            bool weight_ok = false;
-                            if (vi[1]) {
-                                const OrtTypeInfo* ti = nullptr;
-                                if (apis.ort_api->GetValueInfoTypeInfo(vi[1], &ti) || !ti) {
-                                    weight_ok = true;
+        if (!is_our_op) continue;
+
+        if (is_matmul_integer) {
+            // Claim MatMulInteger nodes if the weight (input[1]) is statically
+            // known to be int8, OR if the weight type is unknown (dynamic
+            // quantization graphs compute the activation type at runtime via
+            // DynamicQuantizeLinear, so input[0] has no static type info).
+            // We verify the actual element types in ComputeImpl.
+            bool inputs_ok = false;
+            {
+                size_t ni = 0;
+                if (!apis.ort_api->Node_GetNumInputs(node, &ni) && ni >= 2) {
+                    std::vector<const OrtValueInfo*> vi(ni, nullptr);
+                    if (!apis.ort_api->Node_GetInputs(node, vi.data(), ni)) {
+                        bool weight_ok = false;
+                        if (vi[1]) {
+                            const OrtTypeInfo* ti = nullptr;
+                            if (apis.ort_api->GetValueInfoTypeInfo(vi[1], &ti) || !ti) {
+                                weight_ok = true;
+                            } else {
+                                const OrtTensorTypeAndShapeInfo* tsi = nullptr;
+                                if (!apis.ort_api->CastTypeInfoToTensorInfo(ti, &tsi) && tsi) {
+                                    ONNXTensorElementDataType et = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+                                    if (!apis.ort_api->GetTensorElementType(tsi, &et))
+                                        weight_ok = (et == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8);
                                 } else {
-                                    const OrtTensorTypeAndShapeInfo* tsi = nullptr;
-                                    if (!apis.ort_api->CastTypeInfoToTensorInfo(ti, &tsi) && tsi) {
-                                        ONNXTensorElementDataType et = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-                                        if (!apis.ort_api->GetTensorElementType(tsi, &et))
-                                            weight_ok = (et == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8);
-                                    } else {
-                                        weight_ok = true;
-                                    }
+                                    weight_ok = true;
                                 }
                             }
-                            inputs_ok = weight_ok;
                         }
+                        inputs_ok = weight_ok;
                     }
                 }
-                if (!inputs_ok) continue;
-                printf("  [TinyXPU EP] Claiming op: MatMulInteger (int8, %dx%d systolic array)\n",
-                       TINYXPU_ARRAY_ROWS, TINYXPU_ARRAY_COLS);
-            } else if (is_qlinear_matmul) {
-                // QLinearMatMul: fully-integer matmul with embedded requant scales.
-                // All scale/zero-point inputs (1,2,4,5,6,7) are constant initializers.
-                printf("  [TinyXPU EP] Claiming op: QLinearMatMul (%dx%d systolic array + requant)\n",
-                       TINYXPU_ARRAY_ROWS, TINYXPU_ARRAY_COLS);
-            } else {
-                // Relu: no type-check needed.
-                printf("  [TinyXPU EP] Claiming op: Relu\n");
             }
-#else
-            printf("  [TinyXPU EP] Claiming op: %s (CPU float32 fallback)\n", op_type);
-#endif
-            fflush(stdout);
+            if (!inputs_ok) continue;
+            printf("  [TinyXPU EP] Claiming op: MatMulInteger (int8, %dx%d systolic array)\n",
+                    TINYXPU_ARRAY_ROWS, TINYXPU_ARRAY_COLS);
+        } else if (is_qlinear_matmul) {
+            // QLinearMatMul: fully-integer matmul with embedded requant scales.
+            // All scale/zero-point inputs (1,2,4,5,6,7) are constant initializers.
+            printf("  [TinyXPU EP] Claiming op: QLinearMatMul (%dx%d systolic array + requant)\n",
+                    TINYXPU_ARRAY_ROWS, TINYXPU_ARRAY_COLS);
+        } else {
+            // Relu: no type-check needed.
+            printf("  [TinyXPU EP] Claiming op: Relu\n");
+        }
+        fflush(stdout);
 
-            // Add each supported node as its own fused group
-            const OrtNode* single_node = node;
-            status = apis.ep_api->EpGraphSupportInfo_AddNodesToFuse(
-                graph_support_info,
-                &single_node,
-                1,
-                nullptr);
+        // Add each supported node as its own fused group
+        const OrtNode* single_node = node;
+        status = apis.ep_api->EpGraphSupportInfo_AddNodesToFuse(
+            graph_support_info,
+            &single_node,
+            1,
+            nullptr);
 
-            if (status != nullptr) {
-                return status;
-            }
+        if (status != nullptr) {
+            return status;
         }
     }
 

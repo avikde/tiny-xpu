@@ -2,9 +2,7 @@
 // Common utilities shared across the TinyXPU ONNX EP plugin.
 
 #include <onnxruntime_c_api.h>
-#include <string>
 #include <cstddef>
-#include <cstdint>
 
 // Helper macro to get containing object from member pointer (like container_of in Linux kernel)
 #define CONTAINER_OF(ptr, type, member) \
