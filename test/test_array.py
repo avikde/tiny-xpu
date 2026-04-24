@@ -188,22 +188,17 @@ async def test_matmul(dut):
 
     await reset_dut(dut)
 
-    rng = np.random.default_rng(42)
+    M = 10
     # Small positive int8 values: products ≤ 5×5=25, column sum ≤ 4×25=100 → fits int32 easily
-    A = rng.integers(1, 6, size=(ROWS, ROWS), dtype=np.int8)  # shape M×K
-    B = rng.integers(1, 6, size=(ROWS, COLS), dtype=np.int8)  # shape K×N
-    C_expected = A.astype(np.int32) @ B.astype(np.int32)  # shape M×N
+    X = np.random.randint(1, 6, size=(M, ROWS), dtype=np.int8)  # shape M×K
+    W = np.random.randint(1, 6, size=(ROWS, COLS), dtype=np.int8)  # shape K×N
+    B = np.random.randint(1, 6, size=(M, COLS), dtype=np.int8)  # shape M×N
+    Y_expected = X.astype(np.int32) @ W.astype(np.int32) + B.astype(np.int32)  # shape M×N
 
-    await load_weights(dut, B)
+    await load_weights(dut, W)
+    Y = await stream_and_collect(dut, X, B)
 
-    results = await stream_and_collect(dut, A)
-
-    for i in range(4):
-        for j in range(COLS):
-            expected = int(C_expected[i][j])
-            assert results[i][j] == expected, (
-                f"C[{i}][{j}]: expected {expected}, got {results[i][j]}"
-            )
+    assert np.array_equal(Y, Y_expected), f"Y=\n{Y}\n!=\nY_expected=\n{Y_expected}"
 
 
 # ---------------------------------------------------------------------------
