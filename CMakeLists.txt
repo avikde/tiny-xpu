@@ -25,17 +25,16 @@ add_custom_target(compile ALL DEPENDS ${COMPILED_VVP})
 if(YOSYS)
     set(SYNTH_JSON "${CMAKE_BINARY_DIR}/synth.json")
 
-    # Build a read_verilog command for each source file
-    set(YOSYS_READ_CMDS "")
-    foreach(src ${SV_SOURCES})
-        string(APPEND YOSYS_READ_CMDS "read_verilog -sv ${src}; ")
-    endforeach()
-
+    # Yosys does not support unpacked array ports used in array.sv, pe_col.sv,
+    # and requant.sv.  Since we only need to synthesize the pe module, read
+    # only pe.sv.  Multiple -p flags avoid CMake splitting on semicolons.
     add_custom_command(
         OUTPUT  ${SYNTH_JSON}
-        COMMAND ${YOSYS} -p
-                "${YOSYS_READ_CMDS} synth -top pe; write_json ${SYNTH_JSON}"
-        DEPENDS ${SV_SOURCES}
+        COMMAND ${YOSYS}
+            -p "read_verilog -sv ${CMAKE_SOURCE_DIR}/src/pe.sv"
+            -p "synth -top pe"
+            -p "write_json ${SYNTH_JSON}"
+        DEPENDS ${CMAKE_SOURCE_DIR}/src/pe.sv
         COMMENT "Synthesising with Yosys"
     )
 
