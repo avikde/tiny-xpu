@@ -30,7 +30,7 @@ Key CMake flags:
 - `-DSIM=ON` — enables Verilator backend (required for end-to-end runs)
 - `-DSIM_ROWS=N -DSIM_COLS=N` — override array size (default **64×64**)
 - `$SKYWATER_LIB` — **env var** pointing to the SkyWater130 Liberty .lib file (required for `synth` target)
-- `-DCLOCK_PERIOD_NS=N` — clock period in ns for STA (default: **10**)
+- `-DCLOCK_PERIOD_NS=N` — clock period in ns for ABC timing-driven mapping (default: **10**)
 
 The EP shared library is built at `build/onnx-plugin/libtinyxpu_ep.{so,dylib}`.
 
@@ -66,8 +66,9 @@ cmake -B build -DSIM=ON -DCLOCK_PERIOD_NS=10
 cmake --build build --target synth
 ```
 
-The `synth` target synthesises the array to SkyWater130 cells and runs STA.
-Results (critical path slack, max frequency) appear in the build log and in `build/synth_sta.rpt`.
+The `synth` target synthesises the array to SkyWater130 cells with ABC timing-driven mapping.
+ABC's `stime -p` reports the estimated critical path delay.
+Outputs go to `synth_outputs/`: `synth.json` (netlist), `synth_stats.txt` (cells), `synth_timing.rpt` (timing).
 
 ## Architecture Notes
 

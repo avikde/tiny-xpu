@@ -1,0 +1,120 @@
+
+10. Executing ABC pass (technology mapping using ABC).
+
+10.1. Extracting gate netlist of module `\synth_array' to `<abc-temp-dir>/input.blif'..
+ABC: using cached merged SCL: /var/folders/w5/sdsm9h5908gb9z8f7l6b83xr0000gn/T/yosys-liberty-scl-cache/yosys_merged_40d90887.scl (1 files)
+
+10.1.1. Executed ABC.
+Extracted 210176 gates and 222481 wires to a netlist network with 12304 inputs and 12288 outputs.
+Running ABC script: <abc-temp-dir>/abc.script
+ABC: ======== ABC command line "source <abc-temp-dir>/abc.script"
+ABC: + read_blif <abc-temp-dir>/input.blif 
+ABC: + read_scl /var/folders/w5/sdsm9h5908gb9z8f7l6b83xr0000gn/T/yosys-liberty-scl-cache/yosys_merged_40d90887.scl 
+ABC: Warning: Detected 9 multi-output cells (for example, "sky130_fd_sc_hd__fa_1").
+ABC: + source /Users/avik/projects/tiny-xpu/build/abc_timing.script 
+ABC: Warning: The network is combinational (run "fraig" or "fraig_sweep").
+ABC: WireLoad = "none"  Gates = 129761 (  3.8 %)   Cap =  6.3 ff (  6.5 %)   Area =   928743.25 ( 80.5 %)   Delay = 10676.35 ps  (  3.5 %)               
+ABC: Path  0 --   11711 : 0   11 pi                        A =   0.00  Df =   0.0   -0.0 ps  S =   0.0 ps  Cin =  0.0 ff  Cout =  27.6 ff  Cmax =   0.0 ff  G =    0  
+ABC: Path  1 --   32656 : 4    1 sky130_fd_sc_hd__a22o_1   A =   8.76  Df = 199.7  -89.9 ps  S =  44.0 ps  Cin =  2.4 ff  Cout =   2.4 ff  Cmax = 159.3 ff  G =   98  
+ABC: Path  2 --   32657 : 2    2 sky130_fd_sc_hd__nand2_1  A =   3.75  Df = 288.1  -73.7 ps  S =  89.4 ps  Cin =  2.3 ff  Cout =   7.7 ff  Cmax = 166.6 ff  G =  318  
+ABC: Path  3 --   32658 : 2    2 sky130_fd_sc_hd__xor2_1   A =   8.76  Df = 636.0 -103.3 ps  S = 248.9 ps  Cin =  4.4 ff  Cout =  10.1 ff  Cmax =  76.9 ff  G =  225  
+ABC: Path  4 --   32682 : 3    2 sky130_fd_sc_hd__xnor3_1  A =  22.52  Df = 971.5  -14.2 ps  S = 105.7 ps  Cin =  3.7 ff  Cout =   7.9 ff  Cmax = 154.7 ff  G =  204  
+ABC: Path  5 --   32685 : 2    1 sky130_fd_sc_hd__xnor2_1  A =   8.76  Df =1144.8  -34.3 ps  S = 156.0 ps  Cin =  4.5 ff  Cout =   4.7 ff  Cmax =  69.6 ff  G =  100  
+ABC: Path  6 --   32689 : 2    2 sky130_fd_sc_hd__xnor2_1  A =   8.76  Df =1320.6  -39.2 ps  S = 171.3 ps  Cin =  4.5 ff  Cout =   5.4 ff  Cmax =  69.6 ff  G =  114  
+ABC: Path  7 --   32708 : 3    2 sky130_fd_sc_hd__maj3_1   A =  10.01  Df =1694.8 -150.3 ps  S =  87.9 ps  Cin =  2.8 ff  Cout =   6.7 ff  Cmax = 155.7 ff  G =  235  
+ABC: Path  8 --   32709 : 3    2 sky130_fd_sc_hd__maj3_1   A =  10.01  Df =2080.7 -337.9 ps  S =  92.0 ps  Cin =  2.8 ff  Cout =   7.1 ff  Cmax = 155.7 ff  G =  246  
+ABC: Path  9 --   32712 : 3    2 sky130_fd_sc_hd__a21oi_1  A =   5.00  Df =2266.1 -290.3 ps  S = 175.6 ps  Cin =  2.3 ff  Cout =   6.4 ff  Cmax =  74.2 ff  G =  262  
+ABC: Path 10 --   32714 : 3    2 sky130_fd_sc_hd__o21ai_0  A =   5.00  Df =2416.4 -194.6 ps  S = 251.4 ps  Cin =  1.7 ff  Cout =   6.9 ff  Cmax =  50.4 ff  G =  390  
+ABC: Path 11 --   32715 : 3    2 sky130_fd_sc_hd__a21oi_1  A =   5.00  Df =2627.6 -276.8 ps  S = 174.7 ps  Cin =  2.3 ff  Cout =   6.3 ff  Cmax =  74.2 ff  G =  259  
+ABC: Path 12 --   32716 : 3    2 sky130_fd_sc_hd__o21ai_0  A =   5.00  Df =2762.5 -171.8 ps  S = 251.4 ps  Cin =  1.7 ff  Cout =   6.9 ff  Cmax =  50.4 ff  G =  390  
+ABC: Path 13 --   32717 : 3    2 sky130_fd_sc_hd__a21oi_1  A =   5.00  Df =2975.7 -256.0 ps  S = 174.7 ps  Cin =  2.3 ff  Cout =   6.3 ff  Cmax =  74.2 ff  G =  259  
+ABC: Path 14 --   32718 : 3    2 sky130_fd_sc_hd__o21ai_0  A =   5.00  Df =3120.3 -142.8 ps  S = 275.4 ps  Cin =  1.7 ff  Cout =   7.8 ff  Cmax =  50.4 ff  G =  446  
+ABC: Path 15 --   32719 : 3    2 sky130_fd_sc_hd__maj3_1   A =  10.01  Df =3515.5 -280.4 ps  S =  90.1 ps  Cin =  2.8 ff  Cout =   6.9 ff  Cmax = 155.7 ff  G =  239  
+ABC: Path 16 --   32720 : 2    1 sky130_fd_sc_hd__nand2_1  A =   3.75  Df =3586.1 -300.7 ps  S =  48.1 ps  Cin =  2.3 ff  Cout =   1.5 ff  Cmax = 166.6 ff  G =   62  
+ABC: Path 17 --   32731 : 4   34 sky130_fd_sc_hd__nor4b_1  A =   8.76  Df =7037.1-3259.8 ps  S =4540.7 ps  Cin =  2.1 ff  Cout = 112.0 ff  Cmax =  33.9 ff  G = 5075  
+ABC: Path 18 --   32802 : 2    3 sky130_fd_sc_hd__xor2_1   A =   8.76  Df =8290.9-4221.4 ps  S = 737.3 ps  Cin =  4.4 ff  Cout =   6.7 ff  Cmax =  76.9 ff  G =  146  
+ABC: Path 19 --   32805 : 4    3 sky130_fd_sc_hd__a211oi_1 A =   7.51  Df =8496.2-2109.0 ps  S = 304.7 ps  Cin =  2.4 ff  Cout =   7.0 ff  Cmax =  47.6 ff  G =  273  
+ABC: Path 20 --   32808 : 5    3 sky130_fd_sc_hd__o311ai_0 A =   8.76  Df =8933.1-2347.5 ps  S = 468.2 ps  Cin =  1.8 ff  Cout =   6.5 ff  Cmax =  29.3 ff  G =  353  
+ABC: Path 21 --   32810 : 3    2 sky130_fd_sc_hd__nand3_1  A =   5.00  Df =9062.7-2347.7 ps  S =  93.0 ps  Cin =  2.4 ff  Cout =   3.0 ff  Cmax = 146.5 ff  G =  121  
+ABC: Path 22 --   32812 : 3    2 sky130_fd_sc_hd__or3_1    A =   6.26  Df =9394.1-2564.8 ps  S =  79.5 ps  Cin =  1.5 ff  Cout =   4.8 ff  Cmax = 167.6 ff  G =  305  
+ABC: Path 23 --   32817 : 3    4 sky130_fd_sc_hd__a21o_1   A =   7.51  Df =9583.1-2612.3 ps  S =  90.3 ps  Cin =  2.4 ff  Cout =   9.0 ff  Cmax = 177.6 ff  G =  358  
+ABC: Path 24 --   32822 : 4    2 sky130_fd_sc_hd__o31a_1   A =   8.76  Df =9881.7-2745.2 ps  S =  91.2 ps  Cin =  2.4 ff  Cout =   7.1 ff  Cmax = 149.2 ff  G =  290  
+ABC: Path 25 --   32824 : 3    3 sky130_fd_sc_hd__o21a_1   A =   7.51  Df =10100.5-2790.6 ps  S = 103.1 ps  Cin =  2.4 ff  Cout =   9.7 ff  Cmax = 163.0 ff  G =  388  
+ABC: Path 26 --   32826 : 4    2 sky130_fd_sc_hd__a211o_1  A =   8.76  Df =10404.7-2953.0 ps  S =  61.1 ps  Cin =  2.4 ff  Cout =   4.9 ff  Cmax = 176.7 ff  G =  196  
+ABC: Path 27 --  152967 : 4    1 sky130_fd_sc_hd__a31o_1   A =   8.76  Df =10601.2-3024.2 ps  S =  38.8 ps  Cin =  2.4 ff  Cout =   1.8 ff  Cmax = 160.2 ff  G =   72  
+ABC: Path 28 --  152968 : 3    1 sky130_fd_sc_hd__o21ai_0  A =   5.00  Df =10676.3  -68.6 ps  S =  88.5 ps  Cin =  1.7 ff  Cout =   0.0 ff  Cmax =  50.4 ff  G =    0  
+ABC: Start-point = pi11710 (\u_pe_0_12.weight_r [5]).  End-point = po11631 ($flatten\u_pe_0_12.$0\acc_out[31:0] [31]).
+ABC: + write_blif <abc-temp-dir>/output.blif 
+
+10.1.2. Re-integrating ABC results.
+ABC RESULTS:   sky130_fd_sc_hd__a2111o_1 cells:       12
+ABC RESULTS:   sky130_fd_sc_hd__a2111oi_0 cells:       38
+ABC RESULTS:   sky130_fd_sc_hd__a211o_1 cells:      176
+ABC RESULTS:   sky130_fd_sc_hd__a211oi_1 cells:      325
+ABC RESULTS:   sky130_fd_sc_hd__a21bo_1 cells:       31
+ABC RESULTS:   sky130_fd_sc_hd__a21boi_0 cells:      546
+ABC RESULTS:   sky130_fd_sc_hd__a21o_1 cells:      948
+ABC RESULTS:   sky130_fd_sc_hd__a21oi_1 cells:     5524
+ABC RESULTS:   sky130_fd_sc_hd__a221o_1 cells:        6
+ABC RESULTS:   sky130_fd_sc_hd__a221oi_1 cells:       20
+ABC RESULTS:   sky130_fd_sc_hd__a22o_1 cells:     1144
+ABC RESULTS:   sky130_fd_sc_hd__a22oi_1 cells:     1080
+ABC RESULTS:   sky130_fd_sc_hd__a2bb2oi_1 cells:       92
+ABC RESULTS:   sky130_fd_sc_hd__a311o_1 cells:       27
+ABC RESULTS:   sky130_fd_sc_hd__a311oi_1 cells:       32
+ABC RESULTS:   sky130_fd_sc_hd__a31o_1 cells:      450
+ABC RESULTS:   sky130_fd_sc_hd__a31oi_1 cells:      490
+ABC RESULTS:   sky130_fd_sc_hd__a32o_1 cells:      247
+ABC RESULTS:   sky130_fd_sc_hd__a32oi_1 cells:        3
+ABC RESULTS:   sky130_fd_sc_hd__and2_0 cells:     2145
+ABC RESULTS:   sky130_fd_sc_hd__and3_1 cells:      922
+ABC RESULTS:   sky130_fd_sc_hd__and3b_1 cells:      237
+ABC RESULTS:   sky130_fd_sc_hd__and4_1 cells:      260
+ABC RESULTS:   sky130_fd_sc_hd__clkinv_1 cells:     4926
+ABC RESULTS:   sky130_fd_sc_hd__lpflow_inputiso1p_1 cells:     1363
+ABC RESULTS:   sky130_fd_sc_hd__lpflow_isobufsrc_1 cells:     5013
+ABC RESULTS:   sky130_fd_sc_hd__maj3_1 cells:    11507
+ABC RESULTS:   sky130_fd_sc_hd__mux2_1 cells:      341
+ABC RESULTS:   sky130_fd_sc_hd__nand2_1 cells:    19563
+ABC RESULTS:   sky130_fd_sc_hd__nand2b_1 cells:     2206
+ABC RESULTS:   sky130_fd_sc_hd__nand3_1 cells:     1696
+ABC RESULTS:   sky130_fd_sc_hd__nand3b_1 cells:      534
+ABC RESULTS:   sky130_fd_sc_hd__nand4_1 cells:     1671
+ABC RESULTS:   sky130_fd_sc_hd__nand4b_1 cells:        3
+ABC RESULTS:   sky130_fd_sc_hd__nand4bb_1 cells:       10
+ABC RESULTS:   sky130_fd_sc_hd__nor2_1 cells:     7317
+ABC RESULTS:   sky130_fd_sc_hd__nor2b_1 cells:       89
+ABC RESULTS:   sky130_fd_sc_hd__nor3_1 cells:      672
+ABC RESULTS:   sky130_fd_sc_hd__nor3b_1 cells:       78
+ABC RESULTS:   sky130_fd_sc_hd__nor4_1 cells:       33
+ABC RESULTS:   sky130_fd_sc_hd__nor4b_1 cells:       84
+ABC RESULTS:   sky130_fd_sc_hd__nor4bb_1 cells:       11
+ABC RESULTS:   sky130_fd_sc_hd__o2111ai_1 cells:        3
+ABC RESULTS:   sky130_fd_sc_hd__o211a_1 cells:       34
+ABC RESULTS:   sky130_fd_sc_hd__o211ai_1 cells:       14
+ABC RESULTS:   sky130_fd_sc_hd__o21a_1 cells:      390
+ABC RESULTS:   sky130_fd_sc_hd__o21ai_0 cells:    12743
+ABC RESULTS:   sky130_fd_sc_hd__o21bai_1 cells:       71
+ABC RESULTS:   sky130_fd_sc_hd__o22a_1 cells:      301
+ABC RESULTS:   sky130_fd_sc_hd__o22ai_1 cells:      323
+ABC RESULTS:   sky130_fd_sc_hd__o311a_1 cells:       16
+ABC RESULTS:   sky130_fd_sc_hd__o311ai_0 cells:      112
+ABC RESULTS:   sky130_fd_sc_hd__o31a_1 cells:      233
+ABC RESULTS:   sky130_fd_sc_hd__o31ai_1 cells:     1146
+ABC RESULTS:   sky130_fd_sc_hd__o32a_1 cells:       17
+ABC RESULTS:   sky130_fd_sc_hd__o32ai_1 cells:        4
+ABC RESULTS:   sky130_fd_sc_hd__o41a_1 cells:       30
+ABC RESULTS:   sky130_fd_sc_hd__o41ai_1 cells:      483
+ABC RESULTS:   sky130_fd_sc_hd__or3_1 cells:      349
+ABC RESULTS:   sky130_fd_sc_hd__or3b_1 cells:        9
+ABC RESULTS:   sky130_fd_sc_hd__or4_1 cells:       46
+ABC RESULTS:   sky130_fd_sc_hd__or4b_1 cells:        8
+ABC RESULTS:   sky130_fd_sc_hd__xnor2_1 cells:    23392
+ABC RESULTS:   sky130_fd_sc_hd__xnor3_1 cells:     3124
+ABC RESULTS:   sky130_fd_sc_hd__xor2_1 cells:    14173
+ABC RESULTS:   sky130_fd_sc_hd__xor3_1 cells:      868
+ABC RESULTS:        internal signals:   197889
+ABC RESULTS:           input signals:    12304
+ABC RESULTS:          output signals:    12288
+Removing temp directory.
+Removing global temp directory.

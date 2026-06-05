@@ -1,4 +1,4 @@
-# Yosys synthesis + STA target for the systolic array.
+# Yosys synthesis target for the systolic array.
 #
 # Yosys does not support unpacked array module ports (used in array.sv and
 # pe_col.sv).  This file generates a flat module that directly instantiates
@@ -6,10 +6,12 @@
 #
 # Exposes a `synth` target that runs:
 #   read_verilog → hierarchy → flatten → proc → techmap →
-#   dfflibmap → abc -liberty → opt_clean → read_liberty -lib -overwrite →
-#   write_json → sdc → sta
+#   dfflibmap → abc -liberty (stime -p timing report) → opt_clean →
+#   write_json → stat
 #
 # Requires $SKYWATER_LIB env var pointing to the SkyWater130 Liberty .lib file.
+# Timing estimates, cell statistics, and gate-level netlist are written to
+# <project>/synth_outputs/.
 
 if(NOT YOSYS)
     return()
@@ -25,15 +27,19 @@ if(NOT EXISTS "$ENV{SKYWATER_LIB}")
   message(FATAL_ERROR "SKYWATER_LIB=$ENV{SKYWATER_LIB} does not exist")
 endif()
 
-# --- Clock period for STA ---
-set(CLOCK_PERIOD_NS 10 CACHE STRING "Clock period in ns for STA")
+# --- Clock period for timing-driven mapping ---
+set(CLOCK_PERIOD_NS 10 CACHE STRING "Clock period in ns for ABC timing-driven mapping")
 
-# --- SDC constraints file (generated at configure time) ---
-set(SDC_FILE "${CMAKE_BINARY_DIR}/synth.sdc")
-file(WRITE ${SDC_FILE}
-    "create_clock -name clk -period ${CLOCK_PERIOD_NS} [get_ports clk]\n")
+# --- Output directory for synthesis results ---
+set(SYNTH_OUT "${CMAKE_SOURCE_DIR}/synth_outputs")
+file(MAKE_DIRECTORY ${SYNTH_OUT})
 
-set(SYNTH_JSON "${CMAKE_BINARY_DIR}/synth.json")
+# --- ABC timing script (generated at configure time) ---
+set(ABC_SCRIPT "${CMAKE_BINARY_DIR}/abc_timing.script")
+file(WRITE ${ABC_SCRIPT}
+    "strash; &get -n; &fraig -x; &put; scorr; dc2; dretime; strash; &get -n; &dch -f; &nf {D}; &put; stime -p\n")
+
+set(SYNTH_JSON "${SYNTH_OUT}/synth.json")
 
 # Cache variables for array dimensions (shared with onnx-plugin).
 set(SIM_ROWS 16 CACHE STRING "Systolic array row count")
@@ -156,17 +162,15 @@ add_custom_command(
         -p "techmap"
         -p "opt"
         -p "dfflibmap -liberty $ENV{SKYWATER_LIB}"
-        -p "abc -liberty $ENV{SKYWATER_LIB}"
+        -p "tee -o ${SYNTH_OUT}/synth_timing.rpt abc -liberty $ENV{SKYWATER_LIB} -script ${CMAKE_BINARY_DIR}/abc_timing.script"
         -p "opt_clean"
-        -p "read_liberty -lib -overwrite $ENV{SKYWATER_LIB}"
         -p "write_json ${SYNTH_JSON}"
-        -p "sdc ${SDC_FILE}"
-        -p "tee -o ${CMAKE_BINARY_DIR}/synth_sta.rpt sta"
+        -p "tee -o ${SYNTH_OUT}/synth_stats.txt stat -width"
     DEPENDS
         ${CMAKE_SOURCE_DIR}/src/pe.sv
         ${SYNTH_SRC}
-        ${SDC_FILE}
-    COMMENT "Synthesising array (${SIM_ROWS}x${SIM_COLS}) to SkyWater130 + STA"
+        ${ABC_SCRIPT}
+    COMMENT "Synthesising array (${SIM_ROWS}x${SIM_COLS}) to SkyWater130 cells"
 )
 
 add_custom_target(synth DEPENDS ${SYNTH_JSON})
