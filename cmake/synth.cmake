@@ -1,14 +1,36 @@
-# Yosys synthesis target for the systolic array.
+# Yosys synthesis + STA target for the systolic array.
 #
 # Yosys does not support unpacked array module ports (used in array.sv and
 # pe_col.sv).  This file generates a flat module that directly instantiates
 # every PE with individual scalar wires — no unpacked arrays anywhere.
 #
-# Exposes a `synth` target that runs: read_verilog → synth → write_json.
+# Exposes a `synth` target that runs:
+#   read_liberty → read_verilog → hierarchy → flatten → proc → techmap
+#   → dfflibmap → abc -liberty → write_json → sdc → sta
+#
+# Requires $SKYWATER_LIB env var pointing to the SkyWater130 Liberty .lib file.
 
 if(NOT YOSYS)
     return()
 endif()
+
+# --- SkyWater130 Liberty library (env var only, no caching) ---
+if(NOT DEFINED ENV{SKYWATER_LIB} OR "$ENV{SKYWATER_LIB}" STREQUAL "")
+  message(FATAL_ERROR
+    "Set the SKYWATER_LIB env var to the path of sky130_fd_sc_hd__tt_025C_1v80.lib.\n"
+    "See README.md for download instructions.")
+endif()
+if(NOT EXISTS "$ENV{SKYWATER_LIB}")
+  message(FATAL_ERROR "SKYWATER_LIB=$ENV{SKYWATER_LIB} does not exist")
+endif()
+
+# --- Clock period for STA ---
+set(CLOCK_PERIOD_NS 10 CACHE STRING "Clock period in ns for STA")
+
+# --- SDC constraints file (generated at configure time) ---
+set(SDC_FILE "${CMAKE_BINARY_DIR}/synth.sdc")
+file(WRITE ${SDC_FILE}
+    "create_clock -name clk -period ${CLOCK_PERIOD_NS} [get_ports clk]\n")
 
 set(SYNTH_JSON "${CMAKE_BINARY_DIR}/synth.json")
 
@@ -125,13 +147,25 @@ file(APPEND ${SYNTH_SRC} "\nendmodule\n")
 add_custom_command(
     OUTPUT  ${SYNTH_JSON}
     COMMAND ${YOSYS}
+        -p "read_liberty -ignore_miss_func $ENV{SKYWATER_LIB}"
         -p "read_verilog -sv ${CMAKE_SOURCE_DIR}/src/pe.sv ${SYNTH_SRC}"
-        -p "synth -top synth_array"
+        -p "hierarchy -check -top synth_array"
+        -p "flatten"
+        -p "proc"
+        -p "opt"
+        -p "techmap"
+        -p "opt"
+        -p "dfflibmap -liberty $ENV{SKYWATER_LIB}"
+        -p "abc -liberty $ENV{SKYWATER_LIB}"
+        -p "opt_clean"
         -p "write_json ${SYNTH_JSON}"
+        -p "sdc ${SDC_FILE}"
+        -p "tee -o ${CMAKE_BINARY_DIR}/synth_sta.rpt sta"
     DEPENDS
         ${CMAKE_SOURCE_DIR}/src/pe.sv
         ${SYNTH_SRC}
-    COMMENT "Synthesising array (${SIM_ROWS}x${SIM_COLS}) with Yosys"
+        ${SDC_FILE}
+    COMMENT "Synthesising array (${SIM_ROWS}x${SIM_COLS}) to SkyWater130 + STA"
 )
 
 add_custom_target(synth DEPENDS ${SYNTH_JSON})

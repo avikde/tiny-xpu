@@ -29,6 +29,8 @@ make -j
 Key CMake flags:
 - `-DSIM=ON` — enables Verilator backend (required for end-to-end runs)
 - `-DSIM_ROWS=N -DSIM_COLS=N` — override array size (default **64×64**)
+- `$SKYWATER_LIB` — **env var** pointing to the SkyWater130 Liberty .lib file (required for `synth` target)
+- `-DCLOCK_PERIOD_NS=N` — clock period in ns for STA (default: **10**)
 
 The EP shared library is built at `build/onnx-plugin/libtinyxpu_ep.{so,dylib}`.
 
@@ -55,6 +57,17 @@ python scripts/run_matmul.py      # ONNX → TinyXPU EP → verify vs NumPy
 ```
 
 `run_matmul.py` defaults to `scripts/matmul_integer_16x16.onnx` and the plugin at `build/onnx-plugin/libtinyxpu_ep.{so,dylib}`. It will fail with a helpful message if either is missing.
+
+## Frequency Analysis
+
+```sh
+export SKYWATER_LIB=/path/to/sky130_fd_sc_hd__tt_025C_1v80.lib  # see README
+cmake -B build -DSIM=ON -DCLOCK_PERIOD_NS=10
+cmake --build build --target synth
+```
+
+The `synth` target synthesises the array to SkyWater130 cells and runs STA.
+Results (critical path slack, max frequency) appear in the build log and in `build/synth_sta.rpt`.
 
 ## Architecture Notes
 
