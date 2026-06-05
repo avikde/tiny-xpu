@@ -66,6 +66,23 @@ cmake -B build -DSIM=ON -DCLOCK_PERIOD_NS=10
 cmake --build build --target synth
 ```
 
+### Clock Period Sweep
+
+Sweep `CLOCK_PERIOD_NS` from 2 to 20 ns to see the area vs frequency tradeoff:
+
+```sh
+./scripts/sweep_period.sh
+```
+
+This runs `cmake` + `make synth` for each period, saving per-period results to `synth_outputs/<period>ns/` (stats, timing, netlist) and printing a summary table of cells, gate area, and delay.
+
+**Memory note:** The sweep uses `SYNTH_COLS=1` (single column) because ABC's
+timing-driven mapping (`&fraig`, `&dch -f`) blows past 10 GB on a 16×16 array
+at 2 ns.  The critical timing path is the accumulator chain down one column
+— all columns have identical delay, so single-column timing is representative.
+Multiply the reported gate area ×16 for an estimated full-array area.  To
+synthesise the full array, pass `-DSYNTH_COLS=16` to cmake (needs >10 GB RAM).
+
 The `synth` target synthesises the array to SkyWater130 cells with ABC timing-driven mapping.
 ABC's `stime -p` reports the estimated critical path delay.
 Outputs go to `synth_outputs/`: `synth.json` (netlist), `synth_stats.txt` (cells), `synth_timing.rpt` (timing).

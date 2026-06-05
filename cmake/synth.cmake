@@ -12,6 +12,15 @@
 # Requires $SKYWATER_LIB env var pointing to the SkyWater130 Liberty .lib file.
 # Timing estimates, cell statistics, and gate-level netlist are written to
 # <project>/synth_outputs/.
+#
+# Memory note: synth flattens all PEs into one module then passes the entire
+# netlist to ABC.  A 16×16 array (256 PEs) under tight timing can exceed 10 GB
+# RAM because ABC's &fraig and &dch -f commands blow up on large flat designs.
+#
+# The critical timing path is the accumulator chain down a single column
+# (ROWS PEs deep).  All columns have identical delay.  So we default to
+# SYNTH_COLS=1 — one column, same timing, a fraction of the memory.
+# Set SYNTH_COLS=16 to synthesise the full array (needs >10 GB for 2 ns).
 
 if(NOT YOSYS)
     return()
@@ -29,31 +38,50 @@ endif()
 
 # --- Clock period for timing-driven mapping ---
 set(CLOCK_PERIOD_NS 10 CACHE STRING "Clock period in ns for ABC timing-driven mapping")
+math(EXPR CLOCK_PERIOD_PS "${CLOCK_PERIOD_NS} * 1000")
+# Stamp file so make rebuilds when the clock period changes (the Yosys command
+# embeds CLOCK_PERIOD_PS in the -D flag but make can't see command changes).
+set(CLOCK_PERIOD_STAMP "${CMAKE_BINARY_DIR}/clock_period.stamp")
+file(WRITE ${CLOCK_PERIOD_STAMP} "${CLOCK_PERIOD_PS}")
 
 # --- Output directory for synthesis results ---
 set(SYNTH_OUT "${CMAKE_SOURCE_DIR}/synth_outputs")
 file(MAKE_DIRECTORY ${SYNTH_OUT})
 
 # --- ABC timing script (generated at configure time) ---
+# The script first runs technology-independent optimisation (fraig, scorr,
+# dc2, dretime), then delay-constrained technology mapping (map) followed
+# by area-recovery choice (dch).  The -D flag on yosys's abc pass sets a
+# global delay target that map and dch both respect — tighter periods
+# select higher-drive cells, relaxed periods select smaller cells.
+# The clock period is written into the file as a comment so Make detects
+# period changes as a content change and triggers a rebuild.
 set(ABC_SCRIPT "${CMAKE_BINARY_DIR}/abc_timing.script")
 file(WRITE ${ABC_SCRIPT}
-    "strash; &get -n; &fraig -x; &put; scorr; dc2; dretime; strash; &get -n; &dch -f; &nf {D}; &put; stime -p\n")
+    "strash; &get -n; &fraig -x; &put; scorr; dc2; dretime; strash; map -D {D}; stime -p\n")
 
 set(SYNTH_JSON "${SYNTH_OUT}/synth.json")
 
 # Cache variables for array dimensions (shared with onnx-plugin).
-set(SIM_ROWS 16 CACHE STRING "Systolic array row count")
-set(SIM_COLS 16 CACHE STRING "Systolic array column count")
+set(SIM_ROWS 16 CACHE STRING "Systolic array row count (Verilator + sim)")
+set(SIM_COLS 16 CACHE STRING "Systolic array column count (Verilator + sim)")
+
+# Synthesis array dimensions — decoupled from SIM_* so we can use a single
+# column for low-memory synthesis while keeping the full array for simulation.
+# The critical timing path is the accumulator chain down a column (SYNTH_ROWS
+# PEs deep).  A single column gives the same delay as the full array.
+set(SYNTH_ROWS "${SIM_ROWS}" CACHE STRING "Systolic array rows for synthesis")
+set(SYNTH_COLS 1 CACHE STRING "Systolic array columns for synthesis")
 
 set(SYNTH_SRC "${CMAKE_BINARY_DIR}/synth_array.sv")
 set(DW 8)
 set(AW 32)
-math(EXPR MAX_R "${SIM_ROWS} - 1")
-math(EXPR MAX_C "${SIM_COLS} - 1")
+math(EXPR MAX_R "${SYNTH_ROWS} - 1")
+math(EXPR MAX_C "${SYNTH_COLS} - 1")
 
 file(WRITE ${SYNTH_SRC}
     "// Auto-generated flat array for Yosys synthesis\n"
-    "// Array: ${SIM_ROWS}x${SIM_COLS}, DATA_WIDTH=${DW}, ACC_WIDTH=${AW}\n"
+    "// Array: ${SYNTH_ROWS}x${SYNTH_COLS} (synthesis), DATA_WIDTH=${DW}, ACC_WIDTH=${AW}\n"
     "`timescale 1ns / 1ps\n\n"
     "module synth_array (\n"
     "    input  logic clk,\n"
@@ -83,7 +111,7 @@ endforeach()
 file(APPEND ${SYNTH_SRC} "\n);\n\n")
 
 # Data wires across rows (n + 1 columns: 0..COLS)
-foreach(c RANGE 0 ${SIM_COLS})
+foreach(c RANGE 0 ${SYNTH_COLS})
     foreach(r RANGE 0 ${MAX_R})
         file(APPEND ${SYNTH_SRC}
             "    logic signed [${DW}-1:0] data_wire_${c}_${r};\n")
@@ -93,7 +121,7 @@ file(APPEND ${SYNTH_SRC} "\n")
 
 # Acc wires down columns (n + 1 rows per column: 0..ROWS)
 foreach(c RANGE 0 ${MAX_C})
-    foreach(r RANGE 0 ${SIM_ROWS})
+    foreach(r RANGE 0 ${SYNTH_ROWS})
         file(APPEND ${SYNTH_SRC}
             "    logic signed [${AW}-1:0] acc_wire_${c}_${r};\n")
     endforeach()
@@ -110,7 +138,7 @@ file(APPEND ${SYNTH_SRC} "\n")
 # Right-edge data outputs
 foreach(r RANGE 0 ${MAX_R})
     file(APPEND ${SYNTH_SRC}
-        "    assign data_out_right_${r} = data_wire_${SIM_COLS}_${r};\n")
+        "    assign data_out_right_${r} = data_wire_${SYNTH_COLS}_${r};\n")
 endforeach()
 file(APPEND ${SYNTH_SRC} "\n")
 
@@ -124,7 +152,7 @@ file(APPEND ${SYNTH_SRC} "\n")
 # Bottom-edge acc outputs
 foreach(c RANGE 0 ${MAX_C})
     file(APPEND ${SYNTH_SRC}
-        "    assign acc_out_bottom_${c} = acc_wire_${c}_${SIM_ROWS};\n")
+        "    assign acc_out_bottom_${c} = acc_wire_${c}_${SYNTH_ROWS};\n")
 endforeach()
 file(APPEND ${SYNTH_SRC} "\n")
 
@@ -162,7 +190,7 @@ add_custom_command(
         -p "techmap"
         -p "opt"
         -p "dfflibmap -liberty $ENV{SKYWATER_LIB}"
-        -p "tee -o ${SYNTH_OUT}/synth_timing.rpt abc -liberty $ENV{SKYWATER_LIB} -script ${CMAKE_BINARY_DIR}/abc_timing.script"
+        -p "tee -o ${SYNTH_OUT}/synth_timing.rpt abc -liberty $ENV{SKYWATER_LIB} -D ${CLOCK_PERIOD_PS} -script ${CMAKE_BINARY_DIR}/abc_timing.script"
         -p "opt_clean"
         -p "write_json ${SYNTH_JSON}"
         -p "tee -o ${SYNTH_OUT}/synth_stats.txt stat -width"
@@ -170,7 +198,8 @@ add_custom_command(
         ${CMAKE_SOURCE_DIR}/src/pe.sv
         ${SYNTH_SRC}
         ${ABC_SCRIPT}
-    COMMENT "Synthesising array (${SIM_ROWS}x${SIM_COLS}) to SkyWater130 cells"
+        ${CLOCK_PERIOD_STAMP}
+    COMMENT "Synthesising array (${SYNTH_ROWS}x${SYNTH_COLS}) to SkyWater130 cells"
 )
 
 add_custom_target(synth DEPENDS ${SYNTH_JSON})
