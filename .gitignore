@@ -11,4 +11,4 @@ scripts/*.onnx
 scripts/*.png
 .DS_Store
 __cmake_systeminformation
-synth_outputs/synth.json
+synth_outputs
