@@ -5,8 +5,9 @@
 # every PE with individual scalar wires — no unpacked arrays anywhere.
 #
 # Exposes a `synth` target that runs:
-#   read_liberty → read_verilog → hierarchy → flatten → proc → techmap
-#   → dfflibmap → abc -liberty → write_json → sdc → sta
+#   read_verilog → hierarchy → flatten → proc → techmap →
+#   dfflibmap → abc -liberty → opt_clean → read_liberty -lib -overwrite →
+#   write_json → sdc → sta
 #
 # Requires $SKYWATER_LIB env var pointing to the SkyWater130 Liberty .lib file.
 
@@ -147,7 +148,6 @@ file(APPEND ${SYNTH_SRC} "\nendmodule\n")
 add_custom_command(
     OUTPUT  ${SYNTH_JSON}
     COMMAND ${YOSYS}
-        -p "read_liberty -ignore_miss_func $ENV{SKYWATER_LIB}"
         -p "read_verilog -sv ${CMAKE_SOURCE_DIR}/src/pe.sv ${SYNTH_SRC}"
         -p "hierarchy -check -top synth_array"
         -p "flatten"
@@ -158,6 +158,7 @@ add_custom_command(
         -p "dfflibmap -liberty $ENV{SKYWATER_LIB}"
         -p "abc -liberty $ENV{SKYWATER_LIB}"
         -p "opt_clean"
+        -p "read_liberty -lib -overwrite $ENV{SKYWATER_LIB}"
         -p "write_json ${SYNTH_JSON}"
         -p "sdc ${SDC_FILE}"
         -p "tee -o ${CMAKE_BINARY_DIR}/synth_sta.rpt sta"
