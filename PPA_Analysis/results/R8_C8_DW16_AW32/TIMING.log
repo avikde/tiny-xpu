@@ -1,0 +1,323 @@
+OpenSTA 3.1.0  Copyright (c) 2026, Parallax Software, Inc.
+License GPLv3: GNU GPL version 3 <http://gnu.org/licenses/gpl.html>
+
+This is free software, and you are free to change and redistribute it
+under certain conditions; type `show_copying' for details. 
+This program comes with ABSOLUTELY NO WARRANTY; for details type `show_warranty'.
+Warning 503: timing.tcl line 1, report_checks -group_count is deprecated. Use -group_path_count instead.
+Startpoint: gen_col[1].u_pe_col/gen_pe[0].u_pe/_5481_
+            (rising edge-triggered flip-flop clocked by clk)
+Endpoint: gen_col[1].u_pe_col/gen_pe[0].u_pe/_5543_
+          (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: max
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock network delay (ideal)
+   0.00    0.00 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5481_/CLK (sky130_fd_sc_hd__dfrtp_1)
+   0.64    0.64 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5481_/Q (sky130_fd_sc_hd__dfrtp_1)
+   0.16    0.79 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5022_/Y (sky130_fd_sc_hd__nand2_1)
+   0.42    1.21 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5099_/X (sky130_fd_sc_hd__xnor3_1)
+   0.32    1.53 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5141_/X (sky130_fd_sc_hd__xor3_1)
+   0.23    1.76 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5142_/Y (sky130_fd_sc_hd__nor2b_1)
+   0.36    2.12 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5146_/X (sky130_fd_sc_hd__xnor3_1)
+   0.21    2.34 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5172_/X (sky130_fd_sc_hd__xnor3_1)
+   0.15    2.48 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5174_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.20    2.68 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5178_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.13    2.81 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5253_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.21    3.02 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5254_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.08    3.10 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5256_/X (sky130_fd_sc_hd__lpflow_isobufsrc_1)
+   0.18    3.28 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5258_/X (sky130_fd_sc_hd__o21a_1)
+   0.21    3.49 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5260_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.13    3.63 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5262_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.20    3.83 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5264_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.01 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5267_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.20 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5269_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.39 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5272_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.58 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5274_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.76 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5277_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.95 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5279_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    5.14 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5282_/X (sky130_fd_sc_hd__o21a_1)
+   0.18    5.32 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5284_/X (sky130_fd_sc_hd__o21ba_1)
+   0.23    5.55 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5286_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    5.67 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5289_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.40    6.07 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5293_/Y (sky130_fd_sc_hd__o311ai_0)
+   0.16    6.24 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5295_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.24    6.48 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5297_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    6.60 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5299_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.23    6.83 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5301_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    6.95 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5303_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.24    7.20 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5339_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.18    7.37 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5460_/X (sky130_fd_sc_hd__a31o_1)
+   0.06    7.43 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5461_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.00    7.43 v gen_col[1].u_pe_col/gen_pe[0].u_pe/_5543_/D (sky130_fd_sc_hd__dfrtp_1)
+           7.43   data arrival time
+
+  20.00   20.00   clock clk (rise edge)
+   0.00   20.00   clock network delay (ideal)
+   0.00   20.00   clock reconvergence pessimism
+          20.00 ^ gen_col[1].u_pe_col/gen_pe[0].u_pe/_5543_/CLK (sky130_fd_sc_hd__dfrtp_1)
+  -0.15   19.85   library setup time
+          19.85   data required time
+---------------------------------------------------------
+          19.85   data required time
+          -7.43   data arrival time
+---------------------------------------------------------
+          12.43   slack (MET)
+
+
+Startpoint: gen_col[1].u_pe_col/gen_pe[1].u_pe/_5481_
+            (rising edge-triggered flip-flop clocked by clk)
+Endpoint: gen_col[1].u_pe_col/gen_pe[1].u_pe/_5543_
+          (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: max
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock network delay (ideal)
+   0.00    0.00 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5481_/CLK (sky130_fd_sc_hd__dfrtp_1)
+   0.64    0.64 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5481_/Q (sky130_fd_sc_hd__dfrtp_1)
+   0.16    0.79 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5022_/Y (sky130_fd_sc_hd__nand2_1)
+   0.42    1.21 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5099_/X (sky130_fd_sc_hd__xnor3_1)
+   0.32    1.53 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5141_/X (sky130_fd_sc_hd__xor3_1)
+   0.23    1.76 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5142_/Y (sky130_fd_sc_hd__nor2b_1)
+   0.36    2.12 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5146_/X (sky130_fd_sc_hd__xnor3_1)
+   0.21    2.34 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5172_/X (sky130_fd_sc_hd__xnor3_1)
+   0.15    2.48 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5174_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.20    2.68 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5178_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.13    2.81 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5253_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.21    3.02 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5254_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.08    3.10 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5256_/X (sky130_fd_sc_hd__lpflow_isobufsrc_1)
+   0.18    3.28 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5258_/X (sky130_fd_sc_hd__o21a_1)
+   0.21    3.49 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5260_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.13    3.63 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5262_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.20    3.83 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5264_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.01 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5267_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.20 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5269_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.39 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5272_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.58 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5274_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.76 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5277_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.95 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5279_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    5.14 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5282_/X (sky130_fd_sc_hd__o21a_1)
+   0.18    5.32 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5284_/X (sky130_fd_sc_hd__o21ba_1)
+   0.23    5.55 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5286_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    5.67 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5289_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.40    6.07 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5293_/Y (sky130_fd_sc_hd__o311ai_0)
+   0.16    6.24 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5295_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.24    6.48 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5297_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    6.60 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5299_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.23    6.83 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5301_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    6.95 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5303_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.24    7.20 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5339_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.18    7.37 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5460_/X (sky130_fd_sc_hd__a31o_1)
+   0.06    7.43 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5461_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.00    7.43 v gen_col[1].u_pe_col/gen_pe[1].u_pe/_5543_/D (sky130_fd_sc_hd__dfrtp_1)
+           7.43   data arrival time
+
+  20.00   20.00   clock clk (rise edge)
+   0.00   20.00   clock network delay (ideal)
+   0.00   20.00   clock reconvergence pessimism
+          20.00 ^ gen_col[1].u_pe_col/gen_pe[1].u_pe/_5543_/CLK (sky130_fd_sc_hd__dfrtp_1)
+  -0.15   19.85   library setup time
+          19.85   data required time
+---------------------------------------------------------
+          19.85   data required time
+          -7.43   data arrival time
+---------------------------------------------------------
+          12.43   slack (MET)
+
+
+Startpoint: gen_col[1].u_pe_col/gen_pe[2].u_pe/_5481_
+            (rising edge-triggered flip-flop clocked by clk)
+Endpoint: gen_col[1].u_pe_col/gen_pe[2].u_pe/_5543_
+          (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: max
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock network delay (ideal)
+   0.00    0.00 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5481_/CLK (sky130_fd_sc_hd__dfrtp_1)
+   0.64    0.64 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5481_/Q (sky130_fd_sc_hd__dfrtp_1)
+   0.16    0.79 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5022_/Y (sky130_fd_sc_hd__nand2_1)
+   0.42    1.21 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5099_/X (sky130_fd_sc_hd__xnor3_1)
+   0.32    1.53 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5141_/X (sky130_fd_sc_hd__xor3_1)
+   0.23    1.76 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5142_/Y (sky130_fd_sc_hd__nor2b_1)
+   0.36    2.12 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5146_/X (sky130_fd_sc_hd__xnor3_1)
+   0.21    2.34 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5172_/X (sky130_fd_sc_hd__xnor3_1)
+   0.15    2.48 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5174_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.20    2.68 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5178_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.13    2.81 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5253_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.21    3.02 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5254_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.08    3.10 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5256_/X (sky130_fd_sc_hd__lpflow_isobufsrc_1)
+   0.18    3.28 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5258_/X (sky130_fd_sc_hd__o21a_1)
+   0.21    3.49 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5260_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.13    3.63 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5262_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.20    3.83 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5264_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.01 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5267_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.20 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5269_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.39 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5272_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.58 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5274_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.76 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5277_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.95 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5279_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    5.14 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5282_/X (sky130_fd_sc_hd__o21a_1)
+   0.18    5.32 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5284_/X (sky130_fd_sc_hd__o21ba_1)
+   0.23    5.55 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5286_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    5.67 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5289_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.40    6.07 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5293_/Y (sky130_fd_sc_hd__o311ai_0)
+   0.16    6.24 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5295_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.24    6.48 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5297_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    6.60 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5299_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.23    6.83 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5301_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    6.95 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5303_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.24    7.20 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5339_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.18    7.37 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5460_/X (sky130_fd_sc_hd__a31o_1)
+   0.06    7.43 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5461_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.00    7.43 v gen_col[1].u_pe_col/gen_pe[2].u_pe/_5543_/D (sky130_fd_sc_hd__dfrtp_1)
+           7.43   data arrival time
+
+  20.00   20.00   clock clk (rise edge)
+   0.00   20.00   clock network delay (ideal)
+   0.00   20.00   clock reconvergence pessimism
+          20.00 ^ gen_col[1].u_pe_col/gen_pe[2].u_pe/_5543_/CLK (sky130_fd_sc_hd__dfrtp_1)
+  -0.15   19.85   library setup time
+          19.85   data required time
+---------------------------------------------------------
+          19.85   data required time
+          -7.43   data arrival time
+---------------------------------------------------------
+          12.43   slack (MET)
+
+
+Startpoint: gen_col[1].u_pe_col/gen_pe[3].u_pe/_5481_
+            (rising edge-triggered flip-flop clocked by clk)
+Endpoint: gen_col[1].u_pe_col/gen_pe[3].u_pe/_5543_
+          (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: max
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock network delay (ideal)
+   0.00    0.00 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5481_/CLK (sky130_fd_sc_hd__dfrtp_1)
+   0.64    0.64 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5481_/Q (sky130_fd_sc_hd__dfrtp_1)
+   0.16    0.79 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5022_/Y (sky130_fd_sc_hd__nand2_1)
+   0.42    1.21 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5099_/X (sky130_fd_sc_hd__xnor3_1)
+   0.32    1.53 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5141_/X (sky130_fd_sc_hd__xor3_1)
+   0.23    1.76 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5142_/Y (sky130_fd_sc_hd__nor2b_1)
+   0.36    2.12 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5146_/X (sky130_fd_sc_hd__xnor3_1)
+   0.21    2.34 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5172_/X (sky130_fd_sc_hd__xnor3_1)
+   0.15    2.48 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5174_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.20    2.68 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5178_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.13    2.81 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5253_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.21    3.02 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5254_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.08    3.10 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5256_/X (sky130_fd_sc_hd__lpflow_isobufsrc_1)
+   0.18    3.28 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5258_/X (sky130_fd_sc_hd__o21a_1)
+   0.21    3.49 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5260_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.13    3.63 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5262_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.20    3.83 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5264_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.01 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5267_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.20 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5269_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.39 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5272_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.58 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5274_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.76 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5277_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.95 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5279_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    5.14 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5282_/X (sky130_fd_sc_hd__o21a_1)
+   0.18    5.32 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5284_/X (sky130_fd_sc_hd__o21ba_1)
+   0.23    5.55 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5286_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    5.67 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5289_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.40    6.07 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5293_/Y (sky130_fd_sc_hd__o311ai_0)
+   0.16    6.24 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5295_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.24    6.48 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5297_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    6.60 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5299_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.23    6.83 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5301_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    6.95 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5303_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.24    7.20 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5339_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.18    7.37 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5460_/X (sky130_fd_sc_hd__a31o_1)
+   0.06    7.43 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5461_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.00    7.43 v gen_col[1].u_pe_col/gen_pe[3].u_pe/_5543_/D (sky130_fd_sc_hd__dfrtp_1)
+           7.43   data arrival time
+
+  20.00   20.00   clock clk (rise edge)
+   0.00   20.00   clock network delay (ideal)
+   0.00   20.00   clock reconvergence pessimism
+          20.00 ^ gen_col[1].u_pe_col/gen_pe[3].u_pe/_5543_/CLK (sky130_fd_sc_hd__dfrtp_1)
+  -0.15   19.85   library setup time
+          19.85   data required time
+---------------------------------------------------------
+          19.85   data required time
+          -7.43   data arrival time
+---------------------------------------------------------
+          12.43   slack (MET)
+
+
+Startpoint: gen_col[1].u_pe_col/gen_pe[4].u_pe/_5481_
+            (rising edge-triggered flip-flop clocked by clk)
+Endpoint: gen_col[1].u_pe_col/gen_pe[4].u_pe/_5543_
+          (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: max
+
+  Delay    Time   Description
+---------------------------------------------------------
+   0.00    0.00   clock clk (rise edge)
+   0.00    0.00   clock network delay (ideal)
+   0.00    0.00 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5481_/CLK (sky130_fd_sc_hd__dfrtp_1)
+   0.64    0.64 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5481_/Q (sky130_fd_sc_hd__dfrtp_1)
+   0.16    0.79 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5022_/Y (sky130_fd_sc_hd__nand2_1)
+   0.42    1.21 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5099_/X (sky130_fd_sc_hd__xnor3_1)
+   0.32    1.53 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5141_/X (sky130_fd_sc_hd__xor3_1)
+   0.23    1.76 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5142_/Y (sky130_fd_sc_hd__nor2b_1)
+   0.36    2.12 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5146_/X (sky130_fd_sc_hd__xnor3_1)
+   0.21    2.34 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5172_/X (sky130_fd_sc_hd__xnor3_1)
+   0.15    2.48 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5174_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.20    2.68 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5178_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.13    2.81 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5253_/Y (sky130_fd_sc_hd__xnor2_1)
+   0.21    3.02 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5254_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.08    3.10 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5256_/X (sky130_fd_sc_hd__lpflow_isobufsrc_1)
+   0.18    3.28 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5258_/X (sky130_fd_sc_hd__o21a_1)
+   0.21    3.49 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5260_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.13    3.63 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5262_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.20    3.83 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5264_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.01 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5267_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.20 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5269_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.39 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5272_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.58 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5274_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.76 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5277_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    4.95 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5279_/X (sky130_fd_sc_hd__o21a_1)
+   0.19    5.14 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5282_/X (sky130_fd_sc_hd__o21a_1)
+   0.18    5.32 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5284_/X (sky130_fd_sc_hd__o21ba_1)
+   0.23    5.55 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5286_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    5.67 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5289_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.40    6.07 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5293_/Y (sky130_fd_sc_hd__o311ai_0)
+   0.16    6.24 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5295_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.24    6.48 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5297_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    6.60 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5299_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.23    6.83 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5301_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.12    6.95 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5303_/Y (sky130_fd_sc_hd__a21oi_1)
+   0.24    7.20 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5339_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.18    7.37 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5460_/X (sky130_fd_sc_hd__a31o_1)
+   0.06    7.43 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5461_/Y (sky130_fd_sc_hd__o21ai_0)
+   0.00    7.43 v gen_col[1].u_pe_col/gen_pe[4].u_pe/_5543_/D (sky130_fd_sc_hd__dfrtp_1)
+           7.43   data arrival time
+
+  20.00   20.00   clock clk (rise edge)
+   0.00   20.00   clock network delay (ideal)
+   0.00   20.00   clock reconvergence pessimism
+          20.00 ^ gen_col[1].u_pe_col/gen_pe[4].u_pe/_5543_/CLK (sky130_fd_sc_hd__dfrtp_1)
+  -0.15   19.85   library setup time
+          19.85   data required time
+---------------------------------------------------------
+          19.85   data required time
+          -7.43   data arrival time
+---------------------------------------------------------
+          12.43   slack (MET)
+
+
+Timing Analysis Completed.
