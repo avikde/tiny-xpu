@@ -21,26 +21,8 @@ add_custom_command(
 
 add_custom_target(compile ALL DEPENDS ${COMPILED_VVP})
 
-# ---------- optional: Yosys synthesis ----------
-if(YOSYS)
-    set(SYNTH_JSON "${CMAKE_BINARY_DIR}/synth.json")
-
-    # Build a read_verilog command for each source file
-    set(YOSYS_READ_CMDS "")
-    foreach(src ${SV_SOURCES})
-        string(APPEND YOSYS_READ_CMDS "read_verilog -sv ${src}; ")
-    endforeach()
-
-    add_custom_command(
-        OUTPUT  ${SYNTH_JSON}
-        COMMAND ${YOSYS} -p
-                "${YOSYS_READ_CMDS} synth -top pe; write_json ${SYNTH_JSON}"
-        DEPENDS ${SV_SOURCES}
-        COMMENT "Synthesising with Yosys"
-    )
-
-    add_custom_target(synth DEPENDS ${SYNTH_JSON})
-endif()
+# ---------- optional: Yosys synthesis (cmake/synth.cmake) ----------
+include(cmake/synth.cmake)
 
 add_subdirectory(onnx-plugin)
 

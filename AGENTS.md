@@ -29,6 +29,8 @@ make -j
 Key CMake flags:
 - `-DSIM=ON` — enables Verilator backend (required for end-to-end runs)
 - `-DSIM_ROWS=N -DSIM_COLS=N` — override array size (default **64×64**)
+- `$SKYWATER_LIB` — **env var** pointing to the SkyWater130 Liberty .lib file (required for `synth` target)
+- `-DCLOCK_PERIOD_NS=N` — clock period in ns for ABC timing-driven mapping (default: **10**)
 
 The EP shared library is built at `build/onnx-plugin/libtinyxpu_ep.{so,dylib}`.
 
@@ -55,6 +57,35 @@ python scripts/run_matmul.py      # ONNX → TinyXPU EP → verify vs NumPy
 ```
 
 `run_matmul.py` defaults to `scripts/matmul_integer_16x16.onnx` and the plugin at `build/onnx-plugin/libtinyxpu_ep.{so,dylib}`. It will fail with a helpful message if either is missing.
+
+## Frequency Analysis
+
+```sh
+export SKYWATER_LIB=/path/to/sky130_fd_sc_hd__tt_025C_1v80.lib  # see README
+cmake -B build -DSIM=ON -DCLOCK_PERIOD_NS=10
+cmake --build build --target synth
+```
+
+### Clock Period Sweep
+
+Sweep `CLOCK_PERIOD_NS` from 2 to 20 ns to see the area vs frequency tradeoff:
+
+```sh
+./scripts/sweep_period.sh
+```
+
+This runs `cmake` + `make synth` for each period, saving per-period results to `synth_outputs/<period>ns/` (stats, timing, netlist) and printing a summary table of cells, gate area, and delay.
+
+**Memory note:** The sweep uses `SYNTH_COLS=1` (single column) because ABC's
+timing-driven mapping (`&fraig`, `&dch -f`) blows past 10 GB on a 16×16 array
+at 2 ns.  The critical timing path is the accumulator chain down one column
+— all columns have identical delay, so single-column timing is representative.
+Multiply the reported gate area ×16 for an estimated full-array area.  To
+synthesise the full array, pass `-DSYNTH_COLS=16` to cmake (needs >10 GB RAM).
+
+The `synth` target synthesises the array to SkyWater130 cells with ABC timing-driven mapping.
+ABC's `stime -p` reports the estimated critical path delay.
+Outputs go to `synth_outputs/`: `synth.json` (netlist), `synth_stats.txt` (cells), `synth_timing.rpt` (timing).
 
 ## Architecture Notes
 

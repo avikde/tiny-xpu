@@ -54,6 +54,8 @@ ctest --verbose     # waveforms written to test/sim_build/*.fst
 Key CMake flags:
 - `-DSIM=ON` — use Verilator simulation backend (required for software runs)
 - `-DSIM_ROWS=N -DSIM_COLS=N` — override array size (default **64×64**)
+- `$SKYWATER_LIB` — **env var** pointing to the SkyWater130 Liberty .lib file (required for `synth` target)
+- `-DCLOCK_PERIOD_NS=N` — clock period in ns for ABC timing-driven mapping (default: **10**)
 
 Install the [Surfer](https://marketplace.visualstudio.com/items?itemName=surfer-project.surfer) VSCode extension to view `.fst` waveforms.
 
@@ -66,6 +68,54 @@ python scripts/matmul.py          # generates matmul_integer_?x?.onnx
 python scripts/run_matmul.py      # 2-D MatMulInteger via Verilator, verifies vs NumPy
 python scripts/test_ops.py        # batched MatMulInteger + Gemm tests
 ```
+
+## Frequency Analysis
+
+Synthesise the array to SkyWater130 standard cells and run static timing analysis to estimate the maximum clock frequency.
+
+### 1. Download the SkyWater130 PDK Library
+
+```sh
+brew install zstd
+cd ~/projects # where you want to put the PDK
+curl -L -o sky130_fd_sc_hd.tar.zst \
+  https://github.com/fossi-foundation/ciel-releases/releases/download/sky130-ff08c23db8359afce3f134c454e7930586d0641c/sky130_fd_sc_hd.tar.zst
+tar --zstd -xf sky130_fd_sc_hd.tar.zst
+ls "$PWD/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib"
+```
+Copy the path, and export it as `SKYWATER_LIB` in your shell rc file.
+
+Add the `export` line to your shell rc file for persistence.
+
+### 2. Build with Synthesis & STA
+
+```sh
+mkdir -p build && cd build
+cmake .. -DSIM=ON -DCLOCK_PERIOD_NS=10
+make synth
+```
+
+The `synth` target runs Yosys to:
+1. Read the RTL
+2. Elaborate and flatten the array
+3. Map DFFs and combinational logic to SkyWater130 cells via ABC (timing-driven with `-D CLOCK_PERIOD_NS`)
+4. Report ABC's estimated critical path delay, area, and cell counts
+
+**Output files (in `synth_outputs/`):**
+- `synth.json` — gate-level netlist
+- `synth_stats.txt` — cell counts
+- `synth_timing.rpt` — ABC timing log (critical path delay)
+
+**Key line in `synth_outputs/synth_timing.rpt`:**
+```
+ABC: Gates = 129761  Area = 928743.25  Delay = 10676.35 ps
+```
+This is ABC's pre-layout critical path estimate (no wireload model). The
+reported delay is optimistic vs. post-P&R but gives a useful frequency target.
+
+**Note:** Yosys's built-in `sta` command is unavailable due to a
+[known bug](https://github.com/YosysHQ/yosys/issues/4232) with non-parametric
+blackbox cells. ABC's `stime -p` provides a comparable pre-layout estimate.
 
 ## Systolic Array Architecture
 
